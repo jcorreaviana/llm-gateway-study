@@ -92,6 +92,8 @@ def create_app(
 
     app = FastAPI(title="llm-gateway", docs_url=None, redoc_url=None, lifespan=lifespan)
 
+    app.state.router = router  # exposto para inspeção em testes
+
     @app.get("/health")
     async def health():
         return {"status": "ok"}
