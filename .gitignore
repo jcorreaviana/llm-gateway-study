@@ -1,0 +1,49 @@
+# Segredos e configuração local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Dados gerados localmente (podem conter prompts/respostas)
+logs/
+*.jsonl
+!eval/prompts.example.jsonl
+data/budget.json
+eval/baseline/
+eval/results/
+
+# Modelos e artefatos pesados
+*.gguf
+*.bin
+*.safetensors
+models/
+
+# IDE e sistema operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc
+*.log
+*.tmp
+.cache/
