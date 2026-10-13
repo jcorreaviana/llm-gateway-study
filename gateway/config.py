@@ -28,6 +28,15 @@ class MockUpstreamSettings(BaseModel):
     port: int = Field(default=9001, ge=1, le=65535)
 
 
+class RateLimitConfig(BaseModel):
+    """Limites locais por minuto. `null` (ou omitido) desativa o respectivo balde."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rpm: int | None = Field(default=None, gt=0)
+    tpm: int | None = Field(default=None, gt=0)
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -38,6 +47,7 @@ class ProviderConfig(BaseModel):
     timeout_s: float = Field(default=30.0, gt=0)
     context_window: int = Field(gt=0)  # em tokens
     enabled: bool = True
+    rate_limit: RateLimitConfig | None = None  # sem limite por padrão
 
     @model_validator(mode="after")
     def _base_url_required(self) -> "ProviderConfig":

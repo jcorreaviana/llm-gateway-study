@@ -19,6 +19,7 @@ providers:
     timeout_s: 10
     context_window: 8192
     enabled: true
+    rate_limit: {rpm: 5, tpm: null}   # limite baixo de propósito, para a demo; null = sem limite
   - name: anthropic               # fora da chain; a chave vem de ANTHROPIC_API_KEY
     type: anthropic
     base_url: https://api.anthropic.com
