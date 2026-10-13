@@ -34,4 +34,47 @@ A saída nunca mostra o valor encontrado. Opcional, como pre-commit:
 echo python scripts/check_secrets.py > .git/hooks/pre-commit
 ```
 
-*(As seções de chaos, métricas e demo serão adicionadas nos próximos marcos.)*
+## Mock upstream (o "provedor de mercado" simulado)
+
+Servidor FastAPI que imita `POST /v1/chat/completions` (formato OpenAI) e pode ser
+sabotado em tempo de execução. Sem modelo real, sem rede externa, sem disco. Escuta
+**somente em `127.0.0.1`**; a porta vem de `mock_upstream.port` no `config.yaml` (padrão 9001).
+
+```bash
+python -m mock_upstream.server
+```
+
+A resposta é um eco determinístico do último prompt, prefixado com `[mock]`, com `usage`.
+
+### API de chaos
+
+| Endpoint | O que faz |
+|---|---|
+| `POST /chaos` | Define o comportamento. **Substitui** a config inteira: campos omitidos voltam ao padrão. |
+| `GET /chaos` | Mostra a config atual. |
+| `POST /chaos/reset` | Volta ao modo `normal`. |
+| `GET /stats` | Requisições recebidas no chat, total e por status devolvido. |
+| `POST /stats/reset` | Zera os contadores. |
+| `GET /health` | `{"status": "ok"}`. |
+
+Campos de `POST /chaos` (valores inválidos retornam 422):
+
+| Campo | Padrão | Descrição |
+|---|---|---|
+| `mode` | `normal` | `normal`, `rate_limit` (429 + `Retry-After`), `server_error`, `slow` |
+| `retry_after_seconds` | `1` | Valor do header `Retry-After` (>= 0) |
+| `error_status` | `500` | Status do `server_error`: `500` ou `503` |
+| `latency_ms` | `0` | Espera do modo `slow` (>= 0) |
+| `fail_every_n` | `null` | Falha a cada N-ésima requisição, em qualquer modo (>= 1). O contador reinicia a cada `POST /chaos` |
+| `fail_status` | `500` | Status da falha periódica (400 a 599; 429 inclui `Retry-After`) |
+
+```bash
+curl -X POST localhost:9001/chaos -H "content-type: application/json" \
+     -d '{"mode": "rate_limit", "retry_after_seconds": 5}'
+curl localhost:9001/stats
+curl -X POST localhost:9001/chaos/reset
+```
+
+Erros seguem o formato OpenAI: `{"error": {"message", "type", "code"}}`.
+
+*(As seções de métricas e demo serão adicionadas nos próximos marcos.)*
