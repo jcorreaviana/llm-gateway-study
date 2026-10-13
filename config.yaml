@@ -3,6 +3,10 @@
 gateway:
   allow_force_provider: false   # habilita o header x-gateway-force-provider (usado na Fase 3)
 
+# Mock de provedor de mercado (bind sempre em 127.0.0.1)
+mock_upstream:
+  port: 9001
+
 # Ordem da cadeia de fallback
 chain: [mock_market, ollama_qwen, ollama_llama]
 
