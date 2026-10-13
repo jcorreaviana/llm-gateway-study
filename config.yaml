@@ -1,30 +1,42 @@
 # Configuração do gateway. Segredos NÃO ficam aqui: vêm de variáveis de ambiente (.env).
-# (Será detalhado nos marcos 2 e 3.)
+# Campos desconhecidos (ex.: api_key) são rejeitados na inicialização.
 gateway:
-  allow_force_provider: false   # habilita o header x-gateway-force-provider (usado na Fase 3)
+  port: 8000                      # o bind é sempre 127.0.0.1 (não configurável)
+  force_provider_enabled: false   # habilita o header x-gateway-force-provider
 
 # Mock de provedor de mercado (bind sempre em 127.0.0.1)
 mock_upstream:
   port: 9001
 
-# Ordem da cadeia de fallback
+# Ordem de tentativa (nomes de provedores definidos abaixo, sem repetição)
 chain: [mock_market, ollama_qwen, ollama_llama]
 
 providers:
-  mock_market:
+  - name: mock_market
     type: mock
     base_url: http://localhost:9001
+    model: mock-market-1
+    timeout_s: 10
+    context_window: 8192
     enabled: true
-  anthropic:
+  - name: anthropic               # fora da chain; a chave vem de ANTHROPIC_API_KEY
     type: anthropic
-    enabled: false              # pode substituir o mock_market; desligado por padrão
-  ollama_qwen:
+    base_url: https://api.anthropic.com
+    model: claude-haiku-5-5
+    timeout_s: 30
+    context_window: 200000
+    enabled: false
+  - name: ollama_qwen
     type: ollama
+    base_url: http://localhost:11434
     model: qwen2.5:3b
-    base_url: http://localhost:11434
+    timeout_s: 120
+    context_window: 4096
     enabled: true
-  ollama_llama:
+  - name: ollama_llama
     type: ollama
-    model: llama3.2:3b
     base_url: http://localhost:11434
+    model: llama3.2:3b
+    timeout_s: 120
+    context_window: 4096
     enabled: true
