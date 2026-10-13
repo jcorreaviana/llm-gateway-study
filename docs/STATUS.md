@@ -14,7 +14,16 @@
   Smoke test manual OK (dois processos + Ollama real): mock `normal` -> `mock_market`;
   `rate_limit` -> `ollama_qwen` com `x-gateway-fallback-reason: mock_market:rate_limited`;
   `/stats` do mock: 2 recebidas (200:1, 429:1). Log do gateway sem prompt.
-- Marcos 4-8: pendentes.
+- **Marco 4 (resiliência): concluído e commitado** (sem push).
+  `gateway/ratelimit.py`, `breaker.py`, `availability.py` (cooldown + guard por provedor),
+  `/status`, `warmup` opcional. 60 testes novos (`test_ratelimit.py`, `test_breaker.py`,
+  `test_resilience.py`). Suíte completa: 109 testes passando.
+  Smoke manual OK (processos reais): mock em `server_error` -> breaker abriu após 3 falhas
+  consecutivas; `/status` = `open` e `/stats` do mock parou em 3 recebidas mesmo com 5 requisições
+  (`mock_market:breaker_open`); mock em `normal` + cooldown de 30 s -> `half_open` -> sonda 200 ->
+  `closed`. `ollama ps` logo após resposta do Qwen: `qwen2.5:3b`, 2.2 GB, **100% GPU**, contexto 4096.
+  Log do gateway sem prompt. Processos encerrados.
+- Marcos 5-8: pendentes.
 
 ## Decisões
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
@@ -56,10 +65,34 @@
   - Falso positivo do `check_secrets` em teste (`api_key=` literal) contornado montando o nome
     do campo em runtime.
 
+- Resiliência (Marco 4):
+  - `scripts/install_hooks.py` instala o pre-commit (roda `check_secrets.py`; bloqueia o commit se
+    falhar). Hook instalado neste clone; reinstalar em cada clone. Nunca encadear scan e commit
+    sem `&&`.
+  - `Router.check_available(provider, est_tokens)` agora devolve `Availability` (motivo,
+    `retry_after_s`, admissão do breaker), não só o motivo. Ordem: desabilitado -> contexto ->
+    cooldown -> breaker -> bucket -> chamada. `Router` e `create_app` aceitam `now` (relógio
+    injetável); `app.state.router` fica exposto para testes.
+  - Admissão do breaker carrega uma "geração": resultado de chamada iniciada antes de uma
+    transição é ignorado (evita confundir chamada lenta de `closed` com sonda). Vaga de sonda é
+    devolvida (`release`) em 429, erro do cliente, `real_api_blocked`, cancelamento, ou se o
+    bucket negar depois da admissão do breaker.
+  - `real_api_blocked` NÃO conta para o breaker (é bloqueio local fail-closed, não saúde do provedor).
+  - Bucket: começa cheio (burst = rpm); pedido maior que o balde passa uma vez com o balde cheio;
+    falha não devolve o consumo; `usage.total_tokens` pode deixar o TPM negativo (dívida).
+  - 429 com `Retry-After: 0` não gera cooldown; sem header usa `default_retry_after_s` (padrão 30).
+  - 503 de indisponibilidade: `Retry-After` = menor espera (inteiro, teto) entre os que informaram
+    (cooldown, breaker aberto, bucket local, 429 recém-recebido); sondas ocupadas não informam.
+  - Prazo total por tentativa via `asyncio.timeout(timeout_s)` em volta do httpx (que só limita
+    por fase). Timeout cancela de verdade e conta para o breaker.
+  - `warmup` só para Ollama (validado), roda no lifespan, fora do breaker, falha só avisa. Não
+    foi exercitado no smoke (padrão desligado); coberto por teste.
+  - `config.yaml`: `mock_market` com `rpm: 5` (demo). Em uso real, 5 rpm esgota rápido: ajustar.
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (testes de integração com Ollama: `-m integration`)
 
 ## Próximo passo exato
-Marco 4: resiliência. Token bucket e circuit breaker plugados em `Router.check_available`,
-usando `retry_after_s` das falhas; novos motivos de fallback (ex.: `circuit_open`,
-`rate_limited` local) e testes.
+Marco 5: custo, métricas e recorder. Budget com reserva ANTES da chamada (lock via arquivo +
+`os.replace`, sem `fcntl`) para liberar o `AnthropicProvider`; métricas Prometheus (incl. estados
+do breaker e motivos de fallback); recorder de requisições sem prompt/segredos.
