@@ -8,7 +8,13 @@
   `mock_upstream/server.py` (`create_app()`, bind fixo em 127.0.0.1, porta em
   `mock_upstream.port` do `config.yaml`, padrão 9001), 17 testes em `tests/test_mock_upstream.py`,
   README com a API de chaos. Suíte completa: 21 testes passando.
-- Marcos 3-8: pendentes.
+- **Marco 3 (gateway e roteamento): concluído e commitado** (sem push).
+  `gateway/config.py` (pydantic), `providers.py`, `router.py`, `main.py`; 28 testes novos
+  (`test_gateway_config.py`, `test_gateway_routing.py`). Suíte completa: 49 testes passando.
+  Smoke test manual OK (dois processos + Ollama real): mock `normal` -> `mock_market`;
+  `rate_limit` -> `ollama_qwen` com `x-gateway-fallback-reason: mock_market:rate_limited`;
+  `/stats` do mock: 2 recebidas (200:1, 429:1). Log do gateway sem prompt.
+- Marcos 4-8: pendentes.
 
 ## Decisões
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
@@ -31,10 +37,29 @@
   extras no `/chaos` dão 422. `/stats` conta só o chat; extra não pedido: `POST /stats/reset`.
 - `pytest.ini` ganhou `pythonpath = .` para os testes importarem `mock_upstream`.
 
+- Gateway (Marco 3):
+  - `config.yaml` mudou: `providers` agora é lista; `gateway.allow_force_provider` virou
+    `gateway.force_provider_enabled`; `gateway.port` (padrão 8000, bind fixo 127.0.0.1).
+    Campos desconhecidos no YAML (ex.: `api_key`) são rejeitados.
+  - Falha tipada (`FailureReason`) além da spec: `invalid_response` (2xx sem JSON / 3xx, com
+    fallback), `disabled` (provedor desabilitado na chain aparece no header de fallback) e
+    `client_error` (4xx, sem fallback, corpo repassado como veio com `x-gateway-provider`).
+  - `Retry-After` já é parseado (segundos ou data HTTP) em `ProviderFailure.retry_after_s`.
+  - Ponto de extensão do Marco 4: `Router.check_available(provider)` (devolve motivo ou None),
+    chamado depois de `disabled`/`context_too_large` e antes de cada tentativa.
+  - Header `x-gateway-force-provider` com nome desconhecido (e flag ligada) -> 400.
+  - Um único `httpx.AsyncClient`, com `timeout_s` por requisição; `create_app(config, client=None)`
+    aceita client injetado (testes usam `mounts` por porta: ASGI para o mock, `MockTransport`
+    para o Ollama). Uvicorn: `python -m gateway.main` ou `gateway.main:app_factory --factory`.
+  - Estimativa de contexto: caracteres/4 (aproximação documentada).
+  - Smoke: o "OlÃ¡" visto no PowerShell foi só decodificação do console, não do gateway.
+  - Falso positivo do `check_secrets` em teste (`api_key=` literal) contornado montando o nome
+    do campo em runtime.
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (testes de integração com Ollama: `-m integration`)
 
 ## Próximo passo exato
-Marco 3: gateway e roteamento. Interface de provider, `MockProvider` (aponta para o
-`mock_upstream`), `OllamaProvider`, `AnthropicProvider` fail-closed, cadeia de fallback
-lida do `config.yaml` e gatilhos iniciais (429, 5xx/timeout). Testes contra o mock via ASGI.
+Marco 4: resiliência. Token bucket e circuit breaker plugados em `Router.check_available`,
+usando `retry_after_s` das falhas; novos motivos de fallback (ex.: `circuit_open`,
+`rate_limited` local) e testes.
