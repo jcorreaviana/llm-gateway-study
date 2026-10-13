@@ -28,11 +28,16 @@ python scripts/check_secrets.py --history   # inclui todo o histórico do git
 ```
 
 Retorna código 1 se achar chaves, e-mails pessoais ou caminhos absolutos do Windows.
-A saída nunca mostra o valor encontrado. Opcional, como pre-commit:
+A saída nunca mostra o valor encontrado.
+
+### Hook de pre-commit
 
 ```bash
-echo python scripts/check_secrets.py > .git/hooks/pre-commit
+python scripts/install_hooks.py
 ```
+
+Instala `.git/hooks/pre-commit`, que roda o `check_secrets.py` e **bloqueia o commit** se o
+scan falhar. O script é versionado; o hook instalado não (rode de novo em cada clone).
 
 ## Mock upstream (o "provedor de mercado" simulado)
 
