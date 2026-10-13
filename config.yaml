@@ -1,0 +1,26 @@
+# Configuração do gateway. Segredos NÃO ficam aqui: vêm de variáveis de ambiente (.env).
+# (Será detalhado nos marcos 2 e 3.)
+gateway:
+  allow_force_provider: false   # habilita o header x-gateway-force-provider (usado na Fase 3)
+
+# Ordem da cadeia de fallback
+chain: [mock_market, ollama_qwen, ollama_llama]
+
+providers:
+  mock_market:
+    type: mock
+    base_url: http://localhost:9001
+    enabled: true
+  anthropic:
+    type: anthropic
+    enabled: false              # pode substituir o mock_market; desligado por padrão
+  ollama_qwen:
+    type: ollama
+    model: qwen2.5:3b
+    base_url: http://localhost:11434
+    enabled: true
+  ollama_llama:
+    type: ollama
+    model: llama3.2:3b
+    base_url: http://localhost:11434
+    enabled: true
