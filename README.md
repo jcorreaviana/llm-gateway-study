@@ -77,4 +77,55 @@ curl -X POST localhost:9001/chaos/reset
 
 Erros seguem o formato OpenAI: `{"error": {"message", "type", "code"}}`.
 
+## Gateway
+
+Recebe `POST /v1/chat/completions` (formato OpenAI) e tenta os provedores da `chain`
+em ordem, caindo para o próximo quando o atual falha. Escuta **somente em `127.0.0.1`**
+(porta em `gateway.port`, padrão 8000). Streaming (`stream=true`) não é suportado (400).
+
+```bash
+python -m mock_upstream.server      # terminal 1
+python -m gateway.main              # terminal 2
+curl localhost:8000/v1/chat/completions -H "content-type: application/json" \
+     -d '{"messages":[{"role":"user","content":"ola"}]}' -i
+```
+
+O `model` enviado pelo cliente é aceito mas substituído pelo `model` do provedor.
+
+### Configuração (`config.yaml`)
+
+| Chave | Descrição |
+|---|---|
+| `gateway.port` | Porta do gateway (padrão 8000). O bind não é configurável. |
+| `gateway.force_provider_enabled` | Padrão `false`. Se `true`, vale o header `x-gateway-force-provider`. |
+| `chain` | Ordem de tentativa, por nome de provedor. |
+| `providers[]` | `name`, `type` (`mock`/`ollama`/`anthropic`), `base_url`, `model`, `timeout_s`, `context_window` (tokens), `enabled`. |
+
+Validado com pydantic na inicialização: nome duplicado, nome inexistente ou repetido na
+`chain`, e campos desconhecidos (como `api_key`) falham com mensagem clara.
+Segredos nunca ficam no YAML. O provedor `anthropic` vem `enabled: false` e **está
+fail-closed neste estágio**: recusa qualquer chamada real (`real_api_blocked`), mesmo com
+`ENABLE_REAL_API=1` e chave. A liberação depende do budget (Marco 5).
+
+### Roteamento e falhas
+
+| Situação | Resultado |
+|---|---|
+| 429 / 5xx / timeout / erro de conexão | `rate_limited` / `server_error` / `timeout` / `connection_error`: fallback |
+| 401 / 403 | `auth_error`: fallback e aviso no log (provedor mal configurado) |
+| 2xx sem JSON válido | `invalid_response`: fallback |
+| Provedor desabilitado | `disabled`: pulado |
+| Prompt não cabe em `context_window` | `context_too_large`: pulado. Estimativa **aproximada**: caracteres/4 |
+| Outro 4xx | Erro do cliente: devolvido como veio, **sem** fallback |
+| Todos falharam | 503 com `error.providers` = `{provedor: motivo}` |
+
+Headers da resposta: `x-gateway-provider` (quem respondeu) e `x-gateway-fallback-reason`
+(`provedor:motivo,...` dos pulados/falhos; ausente sem fallback).
+`x-gateway-force-provider: <nome>` tenta só aquele provedor, sem fallback, e é ignorado
+se `force_provider_enabled` for `false`. `GET /health` responde `{"status": "ok"}`.
+
+Logs de aplicação registram apenas `request_id`, provedor, motivo e latência: nunca
+prompt, resposta ou chaves. Token bucket e circuit breaker entram no Marco 4
+(`Router.check_available` é o ponto de extensão).
+
 *(As seções de métricas e demo serão adicionadas nos próximos marcos.)*
