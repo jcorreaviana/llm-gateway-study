@@ -4,6 +4,7 @@ Contrato: `complete(request)` devolve `ProviderSuccess` ou `ProviderFailure`. Fa
 rede/HTTP nunca viram exceção para o router. Nada aqui registra prompt, resposta ou chave.
 """
 
+import asyncio
 import logging
 import os
 import time
@@ -34,6 +35,9 @@ class FailureReason(str, Enum):
     # Usados só pelo router (o provedor não chega a ser chamado):
     CONTEXT_TOO_LARGE = "context_too_large"
     DISABLED = "disabled"
+    RATE_LIMIT_LOCAL = "rate_limit_local"  # token bucket local esgotado
+    BREAKER_OPEN = "breaker_open"
+    COOLING_DOWN = "cooling_down"  # 429 recente: aguardando o Retry-After
 
 
 @dataclass(frozen=True)
@@ -46,7 +50,7 @@ class ProviderSuccess:
 class ProviderFailure:
     reason: FailureReason
     status_code: int | None = None
-    retry_after_s: float | None = None  # já parseado; o Marco 4 vai usar
+    retry_after_s: float | None = None  # já parseado; alimenta o cooldown do router
     latency_ms: float = 0.0
     # Só para CLIENT_ERROR: a resposta original, devolvida ao cliente como veio.
     body: bytes | None = None
@@ -110,10 +114,13 @@ class OpenAICompatProvider(Provider):
             return (time.perf_counter() - start) * 1000
 
         try:
-            resp = await self._client.post(
-                url, json=payload, headers=self._headers(), timeout=self.cfg.timeout_s
-            )
-        except httpx.TimeoutException:
+            # O timeout do httpx vale por fase (conexão, leitura...). O asyncio.timeout é o
+            # prazo TOTAL: ao estourar, cancela a requisição de verdade (sem tarefa pendurada).
+            async with asyncio.timeout(self.cfg.timeout_s):
+                resp = await self._client.post(
+                    url, json=payload, headers=self._headers(), timeout=self.cfg.timeout_s
+                )
+        except (httpx.TimeoutException, TimeoutError):
             return ProviderFailure(FailureReason.TIMEOUT, latency_ms=elapsed())
         except httpx.RequestError:
             return ProviderFailure(FailureReason.CONNECTION_ERROR, latency_ms=elapsed())

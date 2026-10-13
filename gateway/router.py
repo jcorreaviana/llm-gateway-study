@@ -1,9 +1,11 @@
 """Router: percorre a chain e cai para o próximo provedor quando o atual falha."""
 
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from gateway.availability import Availability, ProviderGuard
 from gateway.config import AppConfig
 from gateway.providers import (
     FailureReason,
@@ -11,6 +13,7 @@ from gateway.providers import (
     ProviderFailure,
     ProviderSuccess,
 )
+from gateway.ratelimit import Clock
 
 log = logging.getLogger("gateway.router")
 
@@ -38,9 +41,11 @@ class RouteSuccess:
 
 
 class AllProvidersFailed(Exception):
-    def __init__(self, attempts: list[Attempt]) -> None:
+    def __init__(self, attempts: list[Attempt], retry_after_s: float | None = None) -> None:
         super().__init__("all providers failed")
         self.attempts = attempts
+        # Menor espera restante entre os provedores que informaram uma (vira o Retry-After).
+        self.retry_after_s = retry_after_s
 
 
 class ClientRequestError(Exception):
@@ -58,14 +63,17 @@ class UnknownProvider(Exception):
 
 
 class Router:
-    def __init__(self, config: AppConfig, providers: dict[str, Provider]) -> None:
+    def __init__(
+        self, config: AppConfig, providers: dict[str, Provider], now: Clock = time.monotonic
+    ) -> None:
         self.config = config
         self.providers = providers
+        self.guards = {p.name: ProviderGuard(p.cfg, now) for p in providers.values()}
 
-    async def check_available(self, provider: Provider) -> FailureReason | None:
-        """Ponto de extensão do Marco 4: token bucket e circuit breaker entram aqui.
-        Devolve o motivo para pular o provedor, ou None se ele pode ser tentado."""
-        return None
+    async def check_available(self, provider: Provider, est_tokens: int) -> Availability:
+        """Decide ANTES de tentar: cooldown -> breaker -> token bucket. Com `reason`
+        preenchido, o provedor é pulado sem ser chamado."""
+        return await self.guards[provider.name].check(est_tokens)
 
     def _pre_check(self, provider: Provider, request: dict[str, Any]) -> FailureReason | None:
         if not provider.cfg.enabled:
@@ -85,15 +93,30 @@ class Router:
             order = self.config.chain
 
         attempts: list[Attempt] = []
+        waits: list[float] = []  # esperas informadas pelos provedores indisponíveis
+        est = estimate_tokens(request)
         for name in order:
             provider = self.providers[name]
-            reason = self._pre_check(provider, request) or await self.check_available(provider)
+            guard = self.guards[name]
+            reason = self._pre_check(provider, request)
+            avail: Availability | None = None
+            if reason is None:
+                avail = await self.check_available(provider, est)
+                reason = avail.reason
+                if reason is not None and avail.retry_after_s is not None:
+                    waits.append(avail.retry_after_s)
             if reason is not None:
                 log.info("request_id=%s provider=%s skipped reason=%s", request_id, name, reason.value)
                 attempts.append((name, reason))
                 continue
 
-            result = await provider.complete(request)
+            adm = avail.admission  # type: ignore[union-attr]
+            try:
+                result = await provider.complete(request)
+            except BaseException:
+                await guard.breaker.release(adm)  # cancelamento: devolve a vaga de sonda
+                raise
+            cooldown = await guard.settle(adm, est, result)
             if isinstance(result, ProviderSuccess):
                 log.info(
                     "request_id=%s provider=%s ok latency_ms=%.0f", request_id, name, result.latency_ms
@@ -110,6 +133,8 @@ class Router:
             )
             if not result.triggers_fallback:
                 raise ClientRequestError(name, result, attempts)
+            if cooldown is not None:
+                waits.append(cooldown)
             attempts.append((name, result.reason))
 
-        raise AllProvidersFailed(attempts)
+        raise AllProvidersFailed(attempts, min(waits) if waits else None)

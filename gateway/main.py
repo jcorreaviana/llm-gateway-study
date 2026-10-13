@@ -7,6 +7,8 @@ ou chaves.
 """
 
 import logging
+import math
+import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
@@ -19,7 +21,8 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from gateway.config import HOST, AppConfig, load_config
-from gateway.providers import build_providers
+from gateway.providers import OllamaProvider, ProviderSuccess, build_providers
+from gateway.ratelimit import Clock
 from gateway.router import (
     AllProvidersFailed,
     Attempt,
@@ -57,15 +60,32 @@ def _fallback_header(attempts: list[Attempt]) -> dict[str, str]:
     return {"x-gateway-fallback-reason": ",".join(f"{n}:{r.value}" for n, r in attempts)}
 
 
-def create_app(config: AppConfig, client: httpx.AsyncClient | None = None) -> FastAPI:
-    """`client` permite injetar um AsyncClient (com transports de teste). Se omitido, cria
-    um único AsyncClient reutilizado, fechado no shutdown."""
+async def warmup_providers(router: Router) -> None:
+    """Uma requisição mínima (max_tokens=1) aos Ollama com `warmup: true`, para o carregamento
+    a frio do modelo não ser confundido com falha. Não passa pelo breaker; falha só avisa."""
+    for p in router.providers.values():
+        if not (p.cfg.warmup and p.cfg.enabled and isinstance(p, OllamaProvider)):
+            continue
+        result = await p.complete({"messages": [{"role": "user", "content": "hi"}], "max_tokens": 1})
+        if isinstance(result, ProviderSuccess):
+            log.info("warmup provider=%s ok latency_ms=%.0f", p.name, result.latency_ms)
+        else:
+            log.warning("warmup provider=%s falhou reason=%s", p.name, result.reason.value)
+
+
+def create_app(
+    config: AppConfig, client: httpx.AsyncClient | None = None, now: Clock = time.monotonic
+) -> FastAPI:
+    """`client` permite injetar um AsyncClient (com transports de teste); `now` injeta o
+    relógio de bucket, breaker e cooldown. Sem `client`, cria um único AsyncClient
+    reutilizado, fechado no shutdown."""
     owns_client = client is None
     http = client or httpx.AsyncClient()
-    router = Router(config, build_providers(config.providers, http))
+    router = Router(config, build_providers(config.providers, http), now)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        await warmup_providers(router)
         yield
         if owns_client:
             await http.aclose()
@@ -75,6 +95,20 @@ def create_app(config: AppConfig, client: httpx.AsyncClient | None = None) -> Fa
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.get("/status")
+    async def status():
+        """Somente leitura e sem segredos: estado de resiliência por provedor."""
+        return {
+            "providers": {
+                p.name: {
+                    "type": p.cfg.type,
+                    "enabled": p.cfg.enabled,
+                    **router.guards[p.name].snapshot(),
+                }
+                for p in router.providers.values()
+            }
+        }
 
     @app.post("/v1/chat/completions")
     async def chat(
@@ -102,9 +136,12 @@ def create_app(config: AppConfig, client: httpx.AsyncClient | None = None) -> Fa
                 media_type=e.failure.content_type, headers=headers,
             )
         except AllProvidersFailed as e:
+            headers = _fallback_header(e.attempts)
+            if e.retry_after_s is not None:  # inteiro, arredondado para cima
+                headers["Retry-After"] = str(max(1, math.ceil(e.retry_after_s)))
             return _error(
                 503, "Todos os provedores falharam.", "gateway_error",
-                headers=_fallback_header(e.attempts),
+                headers=headers,
                 providers={n: r.value for n, r in e.attempts},
             )
 
