@@ -37,6 +37,14 @@ class RateLimitConfig(BaseModel):
     tpm: int | None = Field(default=None, gt=0)
 
 
+class BreakerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    failure_threshold: int = Field(default=3, gt=0)
+    cooldown_s: float = Field(default=30.0, gt=0)
+    half_open_max_calls: int = Field(default=1, gt=0)
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -48,11 +56,16 @@ class ProviderConfig(BaseModel):
     context_window: int = Field(gt=0)  # em tokens
     enabled: bool = True
     rate_limit: RateLimitConfig | None = None  # sem limite por padrão
+    breaker: BreakerConfig = BreakerConfig()
+    default_retry_after_s: float = Field(default=30.0, gt=0)  # 429 sem header Retry-After
+    warmup: bool = False  # só Ollama: uma requisição mínima na inicialização
 
     @model_validator(mode="after")
     def _base_url_required(self) -> "ProviderConfig":
         if self.type in ("mock", "ollama") and not self.base_url:
             raise ValueError(f"provedor '{self.name}' ({self.type}) exige base_url")
+        if self.warmup and self.type != "ollama":
+            raise ValueError(f"provedor '{self.name}': warmup só vale para type ollama")
         return self
 
 
