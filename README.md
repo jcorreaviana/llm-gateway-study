@@ -105,6 +105,7 @@ O `model` enviado pelo cliente é aceito mas substituído pelo `model` do proved
 | `gateway.force_provider_enabled` | Padrão `false`. Se `true`, vale o header `x-gateway-force-provider`. |
 | `chain` | Ordem de tentativa, por nome de provedor. |
 | `providers[]` | `name`, `type` (`mock`/`ollama`/`anthropic`), `base_url`, `model`, `timeout_s`, `context_window` (tokens), `enabled`. |
+| `providers[].rate_limit`, `.breaker`, `.default_retry_after_s`, `.warmup` | Resiliência, opcionais (veja abaixo). |
 
 Validado com pydantic na inicialização: nome duplicado, nome inexistente ou repetido na
 `chain`, e campos desconhecidos (como `api_key`) falham com mensagem clara.
@@ -130,7 +131,50 @@ Headers da resposta: `x-gateway-provider` (quem respondeu) e `x-gateway-fallback
 se `force_provider_enabled` for `false`. `GET /health` responde `{"status": "ok"}`.
 
 Logs de aplicação registram apenas `request_id`, provedor, motivo e latência: nunca
-prompt, resposta ou chaves. Token bucket e circuit breaker entram no Marco 4
-(`Router.check_available` é o ponto de extensão).
+prompt, resposta ou chaves.
+
+### Resiliência (token bucket, circuit breaker e cooldown)
+
+O router decide se um provedor está disponível **antes** de tentar (`Router.check_available`).
+Ordem em cada tentativa: desabilitado -> contexto grande -> cooldown -> breaker -> token bucket -> chamada.
+
+```yaml
+providers:
+  - name: mock_market
+    # ...
+    rate_limit: {rpm: 5, tpm: null}   # null desativa; sem a chave = sem limite
+    breaker: {failure_threshold: 3, cooldown_s: 30, half_open_max_calls: 1}   # estes são os padrões
+    default_retry_after_s: 30         # usado em 429 sem header Retry-After
+    warmup: false                     # só Ollama: requisição mínima (max_tokens=1) na inicialização
+```
+
+Todos os números devem ser > 0 (zero ou negativo falha na inicialização). Mock e Ollama vêm
+sem limite; o `config.yaml` de exemplo deixa o `mock_market` com `rpm: 5` para a demo.
+
+| Mecanismo | Comportamento | Motivo ao pular |
+|---|---|---|
+| Token bucket | Um balde de RPM e outro de TPM por provedor, com reabastecimento **contínuo**. TPM usa a estimativa chars/4 e, em sucesso, é corrigido para `usage.total_tokens` real. Um pedido maior que o balde passa uma vez, com o balde cheio. | `rate_limit_local` |
+| Circuit breaker | `closed` -> `open` após N falhas **consecutivas** (`server_error`, `timeout`, `connection_error`, `invalid_response`, `auth_error`); um sucesso zera. Após `cooldown_s`, `half_open` deixa passar até `half_open_max_calls` sondas concorrentes: sucesso fecha, falha reabre e reinicia o cooldown. `rate_limited`, `client_error`, `context_too_large`, `rate_limit_local` e `real_api_blocked` não contam. | `breaker_open` |
+| Cooldown | Um 429 marca o provedor indisponível por `Retry-After` (ou `default_retry_after_s`), sem chamá-lo. Não conta para o breaker. | `cooling_down` |
+
+Se todos estiverem indisponíveis, a resposta é 503 com `error.providers` e o header
+`Retry-After` (segundos, arredondado para cima) com a **menor** espera entre os provedores que
+informaram uma; sem nenhuma, o header é omitido. `x-gateway-force-provider` também respeita
+cooldown, breaker e bucket. Os novos motivos aparecem em `x-gateway-fallback-reason`.
+
+O timeout por provedor (`timeout_s`) é o prazo total da tentativa; ao estourar, a requisição é
+cancelada de verdade (`asyncio.timeout`) e conta como `timeout` para o breaker. Com `warmup: true`,
+o gateway faz uma requisição mínima ao modelo Ollama na inicialização, para a carga a frio não ser
+confundida com falha (se falhar, só avisa no log; não passa pelo breaker).
+
+### `GET /status`
+
+Somente leitura e sem segredos (nada de `base_url` ou chaves). Para cada provedor: `type`,
+`enabled`, `breaker` (`state`, `consecutive_failures`, `open_remaining_s`), `buckets`
+(`rpm`/`tpm` com `level` e `capacity`, ou `null` sem limite) e `cooldown_remaining_s`.
+
+```bash
+curl localhost:8000/status
+```
 
 *(As seções de métricas e demo serão adicionadas nos próximos marcos.)*
