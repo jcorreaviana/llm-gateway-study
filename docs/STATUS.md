@@ -57,8 +57,17 @@
   plataformas** (ubuntu-latest e windows-latest; os dois ramos do lock do budget, `fcntl` e `msvcrt`,
   agora exercitados). Anotações do GitHub, sem falha: Node.js 20 deprecado nas actions (`checkout@v4`,
   `setup-python@v5`) e `ubuntu-latest` migra para Ubuntu 26 em 19/10/2026.
+- **Correção pós-push (14/10/2026): concluída.** O histórico foi reescrito UMA vez (48 commits) só para remover
+  o trailer `Co-Authored-By` das mensagens; árvore (hash de tree idêntico), autor, committer e datas intactos.
+  Push único com `--force-with-lease` (remoto só com `main`, 0 forks, 0 PRs, 0 estrelas). `LICENSE` agora tem
+  o titular `José Corrêa Viana`, 2026 (commit `docs: set license holder`); o scanner não tem regra de nome,
+  então nenhuma exceção foi aberta. Verificação: `check_secrets.py` (arquivos e `--history`) limpo, 277 testes,
+  cobertura 97,33%, ruff limpo. **CI do novo HEAD (`6ccc8ed`): verde em ubuntu-latest e windows-latest.**
+  Backup local e refs do filter-branch removidos.
 
 ## Decisões
+- **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
+  `--force` volta a ser proibido (a autorização de 14/10/2026 foi de uso único e já foi consumida).
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
 - Remote `origin` configurado com URL limpa (sem credenciais). Credential helper `manager`
   (config de sistema do Git for Windows) confirmado.
@@ -210,7 +219,8 @@
 - Bucket: `usage.total_tokens` pode deixar o TPM negativo.
 - Estado de cooldown, breaker, buckets e métricas só em memória; recorder e budget assumem um processo.
 - Estimativa de tokens aproximada (caracteres/4); sem streaming.
-- Actions do CI em versões que rodam em Node 20 (aviso de deprecação); revisar versões.
+- CI: avisos de Node 20 nas actions (`checkout@v4`, `setup-python@v5`) e mudança do `ubuntu-latest` para
+  Ubuntu 26 em 19/10/2026. **Tratar no início da Fase 2** (subir versões das actions; conferir o job Ubuntu 26).
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
