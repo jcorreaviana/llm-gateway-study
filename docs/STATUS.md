@@ -92,7 +92,10 @@
     repositório idênticos antes e depois; nenhum processo órfão. **Nenhuma chamada à Anthropic.** Os 48 prompts NÃO
     foram rodados (ficam para quando os scorers existirem).
 
-- **Marco 10 (Fase 3: scorers, similaridade e estatística): concluído, commitado, SEM push** (aguarda confirmação).
+- **Marco 10 (Fase 3: scorers, similaridade e estatística): concluído e publicado** (push normal, sem `--force`, de
+  `151b8ec` a `3852a68`; autor só noreply, 0 trailers `Co-Authored-By`, `eval/results/` fora do `git ls-files`,
+  `check_secrets.py` limpo em arquivos e `--history`). **CI do HEAD `3852a68`: verde em windows-latest e ubuntu-24.04**
+  (o CI não instala `requirements-eval.txt`; o teste do modelo real segue só como integração).
   `evalkit/scorers.py` (6 tipos de `check` + summarization composta), `embedding.py` (`Embedder` injetável, modelo
   real opcional), `stats.py` (Wilson, percentis, bootstrap com semente, McNemar exato), `score.py`
   (`python -m evalkit.score --run-id <id> [--review-sample] [--no-embedding | --allow-download]`),
@@ -105,6 +108,13 @@
     **por categoria nada é conclusivo** (8 pares cada). Nenhum prompt defeituoso: os 5 em que os dois reprovam
     (extraction-06, instruction-08, reasoning-03/05/08) são erros reais dos modelos (conferido à mão). `reasoning` é a
     categoria mais fraca (Qwen 50%, Llama 38%), em parte porque o enunciado proíbe explicar (sem cadeia de raciocínio).
+  - **Correção antes do push (`fix: pin embedding revision and force cpu`):** o embedding agora roda em `device="cpu"` e
+    a revision do modelo é fixada no código (`DEFAULT_REVISION` `e8f8c211...`, o commit já em cache; outro modelo não
+    herda essa revision e aparece como `unpinned`). O `meta.json` do run ganhou a seção `scoring` (data, semente,
+    status do embedding, modelo, revision, device, `max_seq_length`), também em `summary.json`. Texto acima de 128
+    tokens (referência ou resposta) é registrado em `details.embedding_truncated`: no `m10-full` só 1 de 16 resumos
+    passou (llama summarization-02, resposta); os scores não mudaram. Totais finais: 519 testes + 8 de integração,
+    cobertura 96,15%.
   - A revisão humana de amostra achou um defeito do scorer (frase de abertura contada como passo na summarization),
     corrigido e coberto por teste antes dos commits. O dataset NÃO foi alterado (hash `c64fa1474d38`).
   - O modelo de embedding (`paraphrase-multilingual-MiniLM-L12-v2`, 458 MB) JÁ estava no cache local do Hugging Face
@@ -331,9 +341,8 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. **Push do Marco 10** (só com confirmação do usuário).
-2. Marco 11: juiz local, calibração e amostra para revisão humana. Marco 12: relatório (markdown + CSV), README e push.
-3. Os 48 prompts já foram coletados e pontuados no run `m10-full` (ignorado pelo git). Para repetir:
+1. Marco 11: juiz local, calibração e amostra para revisão humana. Marco 12: relatório (markdown + CSV), README e push.
+2. Os 48 prompts já foram coletados e pontuados no run `m10-full` (ignorado pelo git). Para repetir:
    `python -m evalkit.run --provider ollama_qwen --run-id <id>`, depois `ollama_llama` com o mesmo `--run-id`, e
    `python -m evalkit.score --run-id <id>`.
-4. **Fase 2 (adiada):** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
+3. **Fase 2 (adiada):** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
