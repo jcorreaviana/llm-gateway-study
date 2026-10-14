@@ -47,7 +47,16 @@
   limpo e `data/`/`logs/` do repo idênticos (hash/mtime). **Nenhuma chamada real à Anthropic.**
   README verificado em clone limpo (venv, pip, demo, pytest, cov, ruff, integração, mock+gateway à mão,
   `curl.exe`, `GATEWAY_CONFIG`, check_secrets, install_hooks, reset_budget).
-- Marco 8: pendente.
+- **Marco 8 (varredura final e push): concluído. Fase 1 concluída e publicada.**
+  Repositório: https://github.com/jcorreaviana/llm-gateway-study (branch `main`, 49 arquivos).
+  Antes do push: diagramas Mermaid (arquitetura e sequência com 429) no README, validados com o
+  Mermaid CLI; CI em matriz `ubuntu-latest` + `windows-latest`. Varredura: `check_secrets.py` (arquivos e
+  histórico) limpo, sem dado pessoal em arquivos, patches, autores ou mensagens, só o e-mail noreply, sem
+  `secrets.*` no CI. O canário de teste só se forma em runtime (nenhuma string contínua com formato de
+  chave no histórico). Push sem `--force`, aceito sem rejeição. **CI do primeiro run: verde nas duas
+  plataformas** (ubuntu-latest e windows-latest; os dois ramos do lock do budget, `fcntl` e `msvcrt`,
+  agora exercitados). Anotações do GitHub, sem falha: Node.js 20 deprecado nas actions (`checkout@v4`,
+  `setup-python@v5`) e `ubuntu-latest` migra para Ubuntu 26 em 19/10/2026.
 
 ## Decisões
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
@@ -195,7 +204,16 @@
 `.venv\Scripts\python -m pytest`  (aleatório; `--cov` para cobertura; `-m integration` com Ollama real;
 `ruff check .` para lint). Detalhes no README.
 
-## Próximo passo exato
-Marco 8: varredura completa (arquivos + histórico), `git status`, lista de arquivos, e só então o
-push (`git push -u origin main`, sem `--force`, com confirmação). Validação real única da Anthropic
-(1 chamada, `max_tokens` 20) só com autorização explícita do usuário.
+## Dívidas conhecidas
+- A lógica de processos (subir/encerrar mock e gateway) está duplicada entre `scripts/demo.py` (`Stack`)
+  e `tests/test_integration.py`.
+- Bucket: `usage.total_tokens` pode deixar o TPM negativo.
+- Estado de cooldown, breaker, buckets e métricas só em memória; recorder e budget assumem um processo.
+- Estimativa de tokens aproximada (caracteres/4); sem streaming.
+- Actions do CI em versões que rodam em Node 20 (aviso de deprecação); revisar versões.
+- Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
+
+## Próximos passos
+1. **Fase 2:** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
+2. **Fase 3:** avaliação de qualidade das respostas locais contra um baseline, usando os registros do
+   recorder (`logs/requests.jsonl`).
