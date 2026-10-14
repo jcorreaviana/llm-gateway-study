@@ -366,6 +366,68 @@ O `check_secrets.py` retorna 1 se achar chaves, e-mails pessoais ou caminhos abs
 saída nunca mostra o valor encontrado. O hook de pre-commit roda esse scan e **bloqueia o commit** se
 ele falhar. Não encadeie o scan e o commit sem `&&`.
 
+## Fase 3: avaliação
+
+Compara os dois modelos locais, **Qwen (`qwen2.5:3b`) contra Llama (`llama3.2:3b`)**, passando pelo gateway com o
+provedor forçado, em 48 prompts sintéticos em PT-BR (6 categorias x 8). **Esta fase não usa a Anthropic**: nenhuma
+chamada, nenhuma chave; o runner recusa rodar se `ENABLE_REAL_API` estiver ligada. Ela também **não mede a perda em
+relação a um modelo de mercado** (isso seria a Fase 3b).
+
+```mermaid
+flowchart LR
+    D["Dataset sintético<br/>eval/prompts (versionado)"] --> V["validate_dataset"]
+    V --> RUN["Runner<br/>evalkit.run"]
+    RUN -->|"provedor forçado"| GW["Gateway 127.0.0.1"]
+    GW --> OL["Ollama<br/>qwen2.5:3b, llama3.2:3b"]
+    RUN --> RES[("eval/results/&lt;run&gt;<br/>não versionado")]
+    RES --> SC["Scorers<br/>evalkit.score"]
+    SC --> RES
+    RES --> J["Juiz local<br/>evalkit.judge, judge_report"]
+    J --> RES
+    RES --> REP["Relatório<br/>evalkit.report"]
+    HUM["Revisão humana<br/>human_verdicts.json"] --> REP
+    REP --> OUT["reports/*.md e *.csv<br/>(só agregados, versionado)"]
+```
+
+### Reproduzir
+
+Precisa do Ollama com os dois modelos e, para a similaridade da summarization, de `pip install -r
+requirements-eval.txt` (o modelo de embedding só é lido do cache local; baixar exige `--allow-download`).
+Os resultados vão para `eval/results/` (ignorado pelo git: contêm as respostas dos modelos).
+
+```powershell
+python -m evalkit.validate_dataset
+python -m evalkit.run --provider ollama_qwen  --run-id meu-run
+python -m evalkit.run --provider ollama_llama --run-id meu-run
+python -m evalkit.score --run-id meu-run
+python -m evalkit.judge --run-id meu-run --judge ollama_qwen
+python -m evalkit.judge --run-id meu-run --judge ollama_llama
+python -m evalkit.judge_report --run-id meu-run
+python -m evalkit.report --run-id meu-run        # grava reports/fase3-qwen-vs-llama.md e .csv
+```
+
+O relatório não precisa de rede nem de Ollama (lê só os arquivos do run) e é determinístico. Sem o juiz ou sem
+`human_verdicts.json` ele gera as seções correspondentes como "não executado".
+
+### Resultado
+
+Detalhes, métodos e avisos em [reports/fase3-qwen-vs-llama.md](reports/fase3-qwen-vs-llama.md) (tabelas em
+[CSV](reports/fase3-qwen-vs-llama.csv)). Em resumo, **neste conjunto de 48 prompts**:
+
+- Aprovação de 87,5% (IC95% 75% a 94%) para o Qwen e 64,6% (IC95% 50% a 77%) para o Llama.
+- Pareado: diferença média de score de 0,15 (IC95% 0,06 a 0,26), McNemar 12 x 1 (p=0,0034): diferença detectada a
+  favor do Qwen, só para este conjunto.
+- Por categoria (8 prompts cada), nenhuma comparação é conclusiva: "indicativo, não conclusivo".
+- O juiz local (um modelo de 3B julgando outro) **não é confiável**: kappa de 0,17 e 0,23 contra os scorers
+  determinísticos, abaixo do critério fixado antes da execução (kappa >= 0,6 e acurácia >= 80%).
+- Revisão humana de 16 itens (mais 3 extras): concordou com o scorer em todos, com ressalvas registradas no relatório.
+
+### Limitações da avaliação
+
+Dataset pequeno e sintético; dois modelos de 3B; uma execução por prompt; o enunciado de `reasoning` proíbe
+explicar; a summarization recebe crédito parcial por pontos-chave compostos, então sua aprovação é um teto; latências
+de modelo quente em GPU. Os avisos completos estão na Seção 2 do relatório.
+
 ## Testes, cobertura e lint
 
 ```powershell
@@ -403,7 +465,9 @@ ruff check .                    # lint
 
 ## Roadmap
 
-- **Fase 1 (este repositório):** gateway, mock, resiliência, observabilidade, custo e demo. Implementada.
+- **Fase 1 (este repositório):** gateway, mock, resiliência, observabilidade, custo e demo. Concluída.
+- **Fase 3 (concluída, local):** avaliação de Qwen contra Llama via gateway, sem Anthropic
+  ([relatório](reports/fase3-qwen-vs-llama.md)).
+- **Fase 3b (planejada):** baseline de um modelo de mercado (Claude) nos mesmos prompts, para medir a perda real.
+  Depende de autorização explícita.
 - **Fase 2 (planejada):** comparar com o LiteLLM Proxy.
-- **Fase 3 (planejada):** avaliação de qualidade das respostas locais contra um baseline, usando os
-  registros do recorder.

@@ -1,0 +1,15 @@
+provider,task_type,n,errors,mean_score,pass_rate,ci95_low,ci95_high,latency_p50_ms,latency_p95_ms,tokens_per_s_p50
+ollama_qwen,all,48,0,0.8912,0.875,0.753,0.9414,211.6,702.4,119.3
+ollama_qwen,classification,8,0,1.0,1.0,0.6756,1.0,62.9,85.0,50.0
+ollama_qwen,extraction,8,0,0.9688,0.875,0.5291,0.9776,294.1,514.1,128.9
+ollama_qwen,instruction,8,0,0.9688,0.875,0.5291,0.9776,153.3,301.2,117.3
+ollama_qwen,reasoning,8,0,0.5,0.5,0.2152,0.7848,60.1,72.5,50.7
+ollama_qwen,summarization,8,0,0.9099,1.0,0.6756,1.0,686.0,784.0,143.0
+ollama_qwen,tool_use,8,0,1.0,1.0,0.6756,1.0,258.8,342.4,119.8
+ollama_llama,all,48,0,0.7394,0.6458,0.5044,0.7657,229.6,718.1,123.2
+ollama_llama,classification,8,0,0.75,0.75,0.4093,0.9285,62.6,76.2,51.1
+ollama_llama,extraction,8,0,0.7083,0.5,0.2152,0.7848,257.3,390.0,126.5
+ollama_llama,instruction,8,0,0.8958,0.75,0.4093,0.9285,259.9,498.1,132.2
+ollama_llama,reasoning,8,0,0.375,0.375,0.1368,0.6943,49.5,63.0,42.8
+ollama_llama,summarization,8,0,0.8009,0.75,0.4093,0.9285,646.0,994.3,142.6
+ollama_llama,tool_use,8,0,0.9062,0.75,0.4093,0.9285,250.2,331.3,123.3
