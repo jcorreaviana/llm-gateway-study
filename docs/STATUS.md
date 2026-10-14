@@ -23,7 +23,17 @@
   (`mock_market:breaker_open`); mock em `normal` + cooldown de 30 s -> `half_open` -> sonda 200 ->
   `closed`. `ollama ps` logo após resposta do Qwen: `qwen2.5:3b`, 2.2 GB, **100% GPU**, contexto 4096.
   Log do gateway sem prompt. Processos encerrados.
-- Marcos 5-8: pendentes.
+- **Marco 5 (custo, métricas e recorder): concluído e commitado** (sem push).
+  `gateway/budget.py`, `secrets.py`, `metrics.py`, `recorder.py`, `scripts/reset_budget.py`;
+  `AnthropicProvider` liberado atrás do guard; `GET /metrics`; `/status` com budget. 93 testes novos
+  (`test_budget.py`, `test_anthropic.py`, `test_metrics_recorder.py`, `gw_helpers.py`, `conftest.py`).
+  Suíte completa: 202 passando. **Nenhuma chamada real à Anthropic** (só `httpx.MockTransport`).
+  Smoke manual OK (processos reais): mock `normal` -> `mock_market`; `rate_limit` -> `ollama_qwen`;
+  `/metrics` com `gateway_fallback_total{from=mock_market,to=ollama_qwen,reason=rate_limited}`;
+  tentativa forçada no `anthropic` com `ENABLE_REAL_API=0` -> 503 `real_api_blocked`, budget
+  inalterado (`used=0`) e breaker `closed`; `git check-ignore` confirma `logs/` e `data/`. Processos
+  encerrados, `git status` limpo.
+- Marcos 6-8: pendentes.
 
 ## Decisões
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
@@ -89,10 +99,42 @@
     foi exercitado no smoke (padrão desligado); coberto por teste.
   - `config.yaml`: `mock_market` com `rpm: 5` (demo). Em uso real, 5 rpm esgota rápido: ajustar.
 
+- Custo e observabilidade (Marco 5):
+  - `config.yaml`: `context_window` dos Ollama = 3072 (contexto carregado é 4096; a janela cobre
+    prompt + resposta e a estimativa chars/4 é aproximada). Novas seções `budget` (`limit` 30,
+    `path`) e `recorder` (`path`, `record_content`); no provedor anthropic, `real_api_max_input_tokens`
+    (1000) e `max_tokens_cap` (50). O `anthropic` perdeu o `base_url` (host fixo no código).
+    `.env.example` perdeu `ANTHROPIC_MODEL`/`ANTHROPIC_MAX_TOKENS`/`REAL_API_CALL_LIMIT` (agora no YAML).
+  - Ordem das checagens do AnthropicProvider: flag -> chave -> enabled -> tamanho -> reserva. A reserva
+    é a ÚLTIMA, para um bloqueio não gastar orçamento. `budget_exhausted` e `input_too_large` ficam fora
+    de `BREAKER_FAILURES` (vaga de sonda devolvida). `NOT_CALLED` (providers.py) = motivos locais, sem
+    conexão e fora do histograma de latência.
+  - Budget: `{"used": n}` em `data/budget.json` (o limite vem do config). Lock em arquivo `.lock`
+    (`msvcrt`/`fcntl`) + `threading.Lock`, escrita via arquivo temporário + `os.replace` (limpa o
+    temporário se falhar). `.gitignore` agora ignora `data/` inteiro (lock e temporários). `status()`
+    só lê; `ensure()` (lifespan) cria em zero. Arquivo inválido: `reserve()` -> False e `status()`
+    traz `error`; nunca reinicia. Sem dependência nova (nem portalocker).
+  - Caminhos relativos do config (budget, recorder) valem a partir da RAIZ do projeto
+    (`gateway.config.PROJECT_ROOT`), não do cwd; `tests/conftest.py` redireciona para `tmp_path` e
+    limpa `ENABLE_REAL_API`/`ANTHROPIC_API_KEY` em todo teste.
+  - `request_id` agora é uuid4 completo (antes 12 hex), igual nos logs, no header
+    `x-gateway-request-id` (todas as respostas do chat) e no recorder.
+  - Métricas: registry próprio por app; `gateway_requests_total` é UMA por requisição (`provider` =
+    quem respondeu, `none` no 503 e nos 400 do gateway); fallback conta cada provedor pulado/falho com
+    `to_provider` = quem respondeu (`none` no 503); breaker e budget são coletados no scrape.
+    `real_api_enabled` no `/status` é só `ENABLE_REAL_API=1` (não olha chave nem `enabled`).
+  - Recorder: `response` = texto do assistente; falhas gravam `response: null`. Escrita síncrona com
+    `threading.Lock` (um processo); falha só avisa. Máscara: padrão `sk-...` + valor atual da chave.
+  - Smoke: com `anthropic.enabled: false` o router pula por `disabled` antes do provedor; para ver
+    `real_api_blocked` foi preciso ligar `enabled` e `force_provider_enabled` temporariamente no YAML
+    (revertido; nada commitado).
+  - Teste de tempo do mock (`test_slow_respects_latency`) falhou uma vez de forma intermitente
+    (margem de relógio no Windows) e passou na repetição; vale endurecer no Marco 6.
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (testes de integração com Ollama: `-m integration`)
 
 ## Próximo passo exato
-Marco 5: custo, métricas e recorder. Budget com reserva ANTES da chamada (lock via arquivo +
-`os.replace`, sem `fcntl`) para liberar o `AnthropicProvider`; métricas Prometheus (incl. estados
-do breaker e motivos de fallback); recorder de requisições sem prompt/segredos.
+Marco 6: suíte de testes completa (revisar lacunas, cenários ponta a ponta com o mock e o Ollama,
+endurecer testes sensíveis a tempo). Validação real única da Anthropic (1 chamada, `max_tokens` 20)
+só com autorização explícita do usuário.
