@@ -22,8 +22,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from evalkit.schema import TASK_TYPES, EvalPrompt
+from evalkit.tokens import estimate_tokens
 from gateway.config import PROJECT_ROOT, load_config
-from gateway.providers import estimate_tokens
 from scripts.check_secrets import scan_line
 
 PROMPTS_DIR = PROJECT_ROOT / "eval" / "prompts"
