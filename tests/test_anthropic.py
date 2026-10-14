@@ -288,11 +288,13 @@ async def test_gateway_input_too_large_falls_back(tmp_path, real_on):
 
 async def test_gateway_forced_anthropic_blocked_leaves_budget_untouched(tmp_path, monkeypatch):
     monkeypatch.setenv("ENABLE_REAL_API", "0")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", fake_key())  # chave presente: só a flag pode bloquear
     async with gateway(tmp_path, config=make_config(force=True)) as gw:
         r = await gw.chat(**{"x-gateway-force-provider": "anthropic"})
         assert r.status_code == 503
         assert r.json()["error"]["providers"] == {"anthropic": "real_api_blocked"}
         assert gw.budget.status().used == 0
+    assert gw.anthropic_calls == []  # nenhuma conexão foi aberta
 
 
 async def test_gateway_real_path_end_to_end_spends_one_reservation(tmp_path, real_on):
