@@ -40,7 +40,14 @@
   Suíte padrão: 253 passando + 5 de integração (também passando). 5 execuções aleatórias
   (sementes 101/202/303/404/505): todas verdes. 6 quebras intencionais: todas detectadas.
   `data/` e `logs/` do repo idênticos antes e depois (hash/mtime). **Nenhuma chamada real à Anthropic.**
-- Marcos 7-8: pendentes.
+- **Marco 7 (demo e README): concluído e commitado** (sem push).
+  `config.demo.yaml`, `scripts/demo.py` (6 cenas, processos reais), `tests/test_demo.py` (23 testes),
+  README reescrito. Suíte padrão: 277 passando + 5 de integração; cobertura 97%; ruff limpo.
+  Demo real rodada uma vez (22 requisições, 13 fallbacks, exit 0): sem processo órfão, `git status`
+  limpo e `data/`/`logs/` do repo idênticos (hash/mtime). **Nenhuma chamada real à Anthropic.**
+  README verificado em clone limpo (venv, pip, demo, pytest, cov, ruff, integração, mock+gateway à mão,
+  `curl.exe`, `GATEWAY_CONFIG`, check_secrets, install_hooks, reset_budget).
+- Marco 8: pendente.
 
 ## Decisões
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
@@ -161,12 +168,34 @@
   - CI: não foi executado (só vale após o push do Marco 8); roda em Linux, onde o ramo `fcntl` do
     budget e os testes de processo nunca rodaram. Pode exigir ajuste no primeiro run.
 
+- Demo e README (Marco 7):
+  - `config.yaml` perdeu o `rpm: 5` do `mock_market` (sem limites artificiais; a Fase 3 usa este). Os
+    limites da demo estão em `config.demo.yaml` (`rpm` 10, breaker `cooldown_s` 10, `warmup` nos Ollama,
+    `force_provider_enabled` true). Os dois passam no mesmo schema (teste carrega ambos).
+  - A demo deriva uma cópia temporária do `config.demo.yaml` (portas livres, `base_url` do mock, budget e
+    recorder no diretório temporário, e `cooldown_s` 2 com `--fast`), validada pelo schema, e passa o
+    caminho em `GATEWAY_CONFIG`. Nada em `data/` nem `logs/`.
+  - Ordem das cenas: Normal, Rate limit, Falha, Recuperação, **Limite local**, Tudo indisponível. O
+    "Limite local" ficou depois porque esvazia o balde do mock (reabastece 1 a cada 6 s) e as cenas 2-4
+    precisam chamar o mock. `rpm` 5 não serve: as cenas 1-4 usam ~8 chamadas ao mock.
+  - "Tudo indisponível" força um único provedor (`mock_market` com balde vazio -> `rate_limit_local`, e
+    `anthropic` -> `disabled`): derrubar os Ollama de propósito não foi viável. O 503 mostra
+    `error.providers` e `Retry-After`.
+  - Ambiente dos filhos: `ENABLE_REAL_API=0` e `ANTHROPIC_API_KEY` **vazia** (não ausente): ausente deixaria
+    o `load_dotenv` do gateway ler a chave de um `.env` local; variável já definida não é sobrescrita.
+  - `Demo` recebe clientes httpx, `sleep` e `perf` injetáveis (testes rodam as cenas em memória com
+    relógio falso). A tabela é ASCII puro; não-ASCII da resposta vira `?`. `scripts/` não entra na
+    cobertura (a fonte é `gateway` e `mock_upstream`).
+  - O `Stack` da demo duplica a lógica de processos de `tests/test_integration.py` (não refatorei os testes
+    de integração). No Windows os filhos sobem com `CREATE_NEW_PROCESS_GROUP` (Ctrl+C só no pai).
+  - README: `curl.exe` com JSON direto em `-d` quebra no PowerShell 5.1 (espaços/aspas); o exemplo usa
+    arquivo (`-d "@arquivo"`). `Activate.ps1` bloqueado por política não foi testado (só orientação).
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (aleatório; `--cov` para cobertura; `-m integration` com Ollama real;
 `ruff check .` para lint). Detalhes no README.
 
 ## Próximo passo exato
-Marco 7: demo e README final (cenário de demonstração reproduzível, instruções de ponta a ponta).
 Marco 8: varredura completa (arquivos + histórico), `git status`, lista de arquivos, e só então o
 push (`git push -u origin main`, sem `--force`, com confirmação). Validação real única da Anthropic
 (1 chamada, `max_tokens` 20) só com autorização explícita do usuário.
