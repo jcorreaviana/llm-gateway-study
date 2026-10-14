@@ -79,8 +79,9 @@ def score_run(
     results: dict[str, list[dict[str, Any]]], prompts: dict[str, EvalPrompt], embedder: Embedder | None
 ) -> list[dict[str, Any]]:
     rows = []
-    for provider, records in results.items():
-        for rec in records:
+    for provider, records in sorted(results.items()):
+        # ordem explícita (provedor, prompt_id): a saída não depende da ordem das linhas nem dos arquivos
+        for rec in sorted(records, key=lambda r: str(r.get("prompt_id"))):
             prompt = prompts.get(rec.get("prompt_id"))
             if prompt is None:
                 rows.append({

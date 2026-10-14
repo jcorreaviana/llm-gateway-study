@@ -490,7 +490,7 @@ def test_execute_runs_every_judgment_and_records_meta(harness):
     assert meta["judge_prompt_hash"] == prompt_hash() and meta["model"] == "qwen2.5:3b"
     assert meta["dataset_hash"] == dataset_hash(PROMPTS_DIR) and meta["summary"]["total"] == 12
     assert meta["temperature"] == 0 and "Nenhuma chamada à Anthropic" in meta["scope"]
-    assert [p.name for p in harness.run_dir.glob("*.jsonl")] == [f"{LLAMA}.jsonl", f"{QWEN}.jsonl"]
+    assert [p.name for p in sorted(harness.run_dir.glob("*.jsonl"))] == [f"{LLAMA}.jsonl", f"{QWEN}.jsonl"]
 
 
 def test_execute_sends_only_judge_safe_content_to_the_gateway(harness, dataset):
