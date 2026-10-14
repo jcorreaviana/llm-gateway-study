@@ -1,6 +1,7 @@
 ﻿import httpx
 import pytest
 
+from gateway.budget import Budget
 from gateway.config import AppConfig
 from gateway.main import create_app
 from mock_upstream.server import create_app as create_mock_app
@@ -258,7 +259,7 @@ async def test_force_unknown_provider_returns_400(make_env):
     assert r.status_code == 400
 
 
-async def test_anthropic_refuses_even_with_real_api_enabled_and_key(make_env, monkeypatch):
+async def test_anthropic_exhausted_budget_blocks_even_with_flag_and_key(make_env, monkeypatch, tmp_path):
     monkeypatch.setenv("ENABLE_REAL_API", "1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-" + "key-for-test")
     opened: list[httpx.Request] = []
@@ -277,13 +278,15 @@ async def test_anthropic_refuses_even_with_real_api_enabled_and_key(make_env, mo
     upstream = httpx.AsyncClient(
         mounts={"all://": httpx.MockTransport(tripwire), MOCK_URL: httpx.ASGITransport(app=create_mock_app())}
     )
-    gw = create_app(config, client=upstream)
+    exhausted = Budget(tmp_path / "budget.json", limit=1)
+    assert exhausted.reserve()  # consome o unico slot
+    gw = create_app(config, client=upstream, budget=exhausted)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=gw), base_url="http://gw") as c:
         r = await c.post("/v1/chat/completions", json=BODY)
     await upstream.aclose()
     assert r.status_code == 200
     assert r.headers["x-gateway-provider"] == "mock_market"
-    assert r.headers["x-gateway-fallback-reason"] == "anthropic:real_api_blocked"
+    assert r.headers["x-gateway-fallback-reason"] == "anthropic:budget_exhausted"
     assert opened == []  # nenhuma conexÃ£o aberta
 
 

@@ -6,6 +6,7 @@ Logs de aplicação só têm request_id, provedor, motivo e latência: nunca pro
 ou chaves.
 """
 
+import asyncio
 import logging
 import math
 import time
@@ -20,8 +21,14 @@ from fastapi import FastAPI, Header
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from gateway.config import HOST, AppConfig, load_config
-from gateway.providers import OllamaProvider, ProviderSuccess, build_providers
+from gateway.budget import Budget
+from gateway.config import HOST, AppConfig, load_config, resolve_path
+from gateway.providers import (
+    AnthropicProvider,
+    OllamaProvider,
+    ProviderSuccess,
+    build_providers,
+)
 from gateway.ratelimit import Clock
 from gateway.router import (
     AllProvidersFailed,
@@ -74,17 +81,22 @@ async def warmup_providers(router: Router) -> None:
 
 
 def create_app(
-    config: AppConfig, client: httpx.AsyncClient | None = None, now: Clock = time.monotonic
+    config: AppConfig,
+    client: httpx.AsyncClient | None = None,
+    now: Clock = time.monotonic,
+    budget: Budget | None = None,
 ) -> FastAPI:
     """`client` permite injetar um AsyncClient (com transports de teste); `now` injeta o
-    relógio de bucket, breaker e cooldown. Sem `client`, cria um único AsyncClient
-    reutilizado, fechado no shutdown."""
+    relógio de bucket, breaker e cooldown; `budget` injeta o orçamento (o padrão vem do
+    config). Sem `client`, cria um único AsyncClient reutilizado, fechado no shutdown."""
     owns_client = client is None
     http = client or httpx.AsyncClient()
-    router = Router(config, build_providers(config.providers, http), now)
+    budget = budget or Budget(resolve_path(config.budget.path), config.budget.limit)
+    router = Router(config, build_providers(config.providers, http, budget), now)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        await asyncio.to_thread(budget.ensure)  # cria data/budget.json em zero, se ausente
         await warmup_providers(router)
         yield
         if owns_client:
@@ -93,6 +105,7 @@ def create_app(
     app = FastAPI(title="llm-gateway", docs_url=None, redoc_url=None, lifespan=lifespan)
 
     app.state.router = router  # exposto para inspeção em testes
+    app.state.budget = budget
 
     @app.get("/health")
     async def health():
@@ -102,6 +115,8 @@ def create_app(
     async def status():
         """Somente leitura e sem segredos: estado de resiliência por provedor."""
         return {
+            "budget": budget.status().as_dict(),
+            "real_api_enabled": AnthropicProvider.real_api_enabled(),  # só o booleano
             "providers": {
                 p.name: {
                     "type": p.cfg.type,

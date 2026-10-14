@@ -8,6 +8,17 @@ gateway:
 mock_upstream:
   port: 9001
 
+# Orçamento rígido de chamadas reais (contador persistente, sem reset automático).
+# Reset manual: python scripts/reset_budget.py
+budget:
+  limit: 30
+  path: data/budget.json          # relativo à raiz do projeto; ignorado pelo git
+
+# Gravação de cada requisição em JSONL (insumo da Fase 3). Ignorado pelo git.
+recorder:
+  path: logs/requests.jsonl
+  record_content: true            # false: só metadados (sem mensagens nem resposta)
+
 # Ordem de tentativa (nomes de provedores definidos abaixo, sem repetição)
 chain: [mock_market, ollama_qwen, ollama_llama]
 
@@ -22,11 +33,13 @@ providers:
     rate_limit: {rpm: 5, tpm: null}   # limite baixo de propósito, para a demo; null = sem limite
   - name: anthropic               # fora da chain; a chave vem de ANTHROPIC_API_KEY
     type: anthropic
-    base_url: https://api.anthropic.com
+    # sem base_url: o host da Anthropic é fixo no código (a chave nunca vai para outro destino)
     model: claude-haiku-5-5
     timeout_s: 30
     context_window: 200000
     enabled: false
+    real_api_max_input_tokens: 1000   # entrada estimada acima disso -> input_too_large
+    max_tokens_cap: 50                # teto de max_tokens por chamada real
   - name: ollama_qwen
     type: ollama
     base_url: http://localhost:11434

@@ -10,6 +10,7 @@ from gateway.config import AppConfig
 from gateway.providers import (
     FailureReason,
     Provider,
+    estimate_tokens,
     ProviderFailure,
     ProviderSuccess,
 )
@@ -18,19 +19,6 @@ from gateway.ratelimit import Clock
 log = logging.getLogger("gateway.router")
 
 Attempt = tuple[str, FailureReason]
-
-
-def estimate_tokens(request: dict[str, Any]) -> int:
-    """APROXIMAÇÃO: ~4 caracteres por token, só sobre o texto das mensagens. Não é um
-    tokenizer real; serve apenas para decidir se o prompt claramente não cabe."""
-    chars = 0
-    for msg in request.get("messages", []):
-        content = msg.get("content") if isinstance(msg, dict) else None
-        if isinstance(content, str):
-            chars += len(content)
-        elif isinstance(content, list):
-            chars += sum(len(p.get("text", "")) for p in content if isinstance(p, dict))
-    return chars // 4 + 1
 
 
 @dataclass
