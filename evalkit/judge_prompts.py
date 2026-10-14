@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 from evalkit.schema import TASK_TYPES, EvalPrompt
 
-JUDGE_PROMPT_VERSION = "v1"
+JUDGE_PROMPT_VERSION = "v2"  # v2: exemplo de formato sem "1-5" (o juiz copiava a faixa como se fosse a nota)
 MAX_TEXT_CHARS = 3000  # cada resposta/enunciado/referência; acima disso é cortado (o contexto do juiz é pequeno)
 SCALE_MIN, SCALE_MAX = 1, 5
 
@@ -150,7 +150,7 @@ def criteria_lines(task_type: str) -> str:
 # --------------------------------------------------------------------------- pontual
 def pointwise_system(task_type: str) -> str:
     keys = list(RUBRICS[task_type])
-    example_scores = ", ".join(f'"{k}": 1-5' for k in keys)
+    example_scores = ", ".join(f'"{k}": <inteiro de 1 a 5>' for k in keys)
     return (
         "Você é um avaliador rigoroso e imparcial de respostas de modelos de linguagem. "
         "Avalie UMA resposta e dê notas inteiras de 1 a 5.\n\n"
@@ -160,7 +160,9 @@ def pointwise_system(task_type: str) -> str:
         "Dê uma nota por critério e uma nota geral (overall) que reflita se a resposta está correta e "
         "atende ao pedido.\n\n"
         "FORMATO DE SAÍDA: responda SOMENTE com um objeto JSON, sem texto antes nem depois, exatamente assim:\n"
-        f'{{"scores": {{{example_scores}}}, "overall": 1-5, "reason": "uma frase curta em português"}}'
+        f'{{"scores": {{{example_scores}}}, "overall": <inteiro de 1 a 5>, '
+        '"reason": "<uma frase curta em português>"}\n'
+        "Substitua cada <inteiro de 1 a 5> pela nota que VOCÊ deu (um único número inteiro, sem faixa)."
     )
 
 
@@ -187,7 +189,7 @@ def pairwise_system(task_type: str) -> str:
         "A ordem em que as respostas aparecem não importa: não prefira A nem B por ser a primeira ou a "
         "segunda. Responda \"empate\" só se as duas forem igualmente boas ou igualmente ruins.\n\n"
         "FORMATO DE SAÍDA: responda SOMENTE com um objeto JSON, sem texto antes nem depois, exatamente assim:\n"
-        '{"winner": "A" ou "B" ou "empate", "reason": "uma frase curta em português"}'
+        '{"winner": "A" ou "B" ou "empate", "reason": "<uma frase curta em português>"}'
     )
 
 
