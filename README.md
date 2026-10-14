@@ -20,6 +20,30 @@ pytest
 Testes rodam 100% contra mocks e não precisam de credenciais.
 Chamadas reais à API só acontecem com `ENABLE_REAL_API=1` no `.env` (padrão `0`).
 
+## Testes, cobertura e lint
+
+```bash
+pytest                          # suíte padrão (sem integração), em ordem aleatória (pytest-randomly)
+pytest -p no:randomly           # ordem fixa, se precisar depurar
+pytest --cov                    # cobertura de gateway/ e mock_upstream/ (falha abaixo de 85%)
+pytest -m integration           # precisa do Ollama real em localhost:11434 (qwen2.5:3b)
+pytest -p randomly --randomly-seed=1234   # reproduz uma ordem específica
+ruff check .                    # lint
+```
+
+- O mapa requisito -> teste está em [docs/TEST_MATRIX.md](docs/TEST_MATRIX.md).
+- Os testes nunca falam com a internet: uma fixture `autouse` (`tests/netguard.py`) só deixa abrir
+  conexão para `127.0.0.1`/`localhost`/`::1` e falha o teste se algo tentar sair, mesmo que o código
+  engula o erro. Nenhum teste escreve em `data/` nem `logs/` do repositório (`tmp_path`; a sessão falha
+  se isso mudar). A cobertura atual é ~97%.
+- Os testes de integração (`@pytest.mark.integration`) ficam fora da execução padrão. Sem o Ollama,
+  eles fazem `skip` com uma mensagem clara. Eles sobem o mock e o gateway como processos reais em
+  portas livres e encerram tudo no final. Para isso os pontos de entrada aceitam `MOCK_UPSTREAM_PORT` e
+  `GATEWAY_CONFIG` (caminho de outro YAML, usado com
+  `uvicorn gateway.main:app_factory --factory --host 127.0.0.1 --port N`).
+- O CI (`.github/workflows/ci.yml`) roda `check_secrets.py --history`, `ruff` e `pytest --cov` em
+  Python 3.12, sem integração e sem nenhuma variável de segredo.
+
 ## Checagem de segredos
 
 ```bash
