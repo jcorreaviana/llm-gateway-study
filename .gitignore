@@ -25,7 +25,7 @@ htmlcov/
 # Dados gerados localmente (podem conter prompts/respostas)
 logs/
 *.jsonl
-!eval/prompts.example.jsonl
+!eval/prompts/*.jsonl
 data/
 eval/baseline/
 eval/results/
