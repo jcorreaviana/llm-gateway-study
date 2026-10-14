@@ -30,6 +30,10 @@ Dados do run de 2026-10-14 (data lida do `meta.json`). Este relatório traz só 
 - **Commit do código na coleta:** `151b8ec3d4965b6a0721b9f54a96d06de0d51160` (árvore com alterações não commitadas na coleta).
 - **GPU:** NVIDIA GeForce RTX 5060.
 
+### 3.1 Divulgação: correção do scorer de summarization
+
+Na primeira revisão de uma amostra de respostas, achou-se um defeito do scorer de summarization: em limites de "N passos/tópicos", a frase de abertura da resposta era contada como um item da lista. A correção (só as linhas de lista contam como passo) é de um BUG de contagem, coberta por teste; não foi um ajuste de pesos nem de limiar a partir do resultado, e o `STATUS.md` do projeto não registra nenhuma outra mudança no scorer. Os scores deste relatório são pós-correção: foram calculados em 2026-10-14 19:40:32 UTC (`meta.json`, `scoring.scored_at`), com o scorer já corrigido. O que NÃO dá para confirmar: o histórico do git tem um único commit do scorer (feito depois da coleta e depois da correção), então ele não prova a ordem exata dos eventos nem o que mudou antes desse commit, e o relatório não afirma quantos scores a correção alterou.
+
 ## 4. Resultados
 
 ### 4.1 Por provedor e categoria
@@ -147,7 +151,13 @@ As notas dos dois juízes ficam marcadas "NÃO CONFIÁVEL" e não entram nos res
 | Qwen-juiz | 67% | 79% | 5 | 5 | 38 |
 | Llama-juiz | 79% | 79% | 5 | 4 | 39 |
 
-Viés de posição = fração de prompts em que o juiz escolheu a mesma POSIÇÃO nas duas rodadas (com a ordem trocada). Com índices desse tamanho e quase todos os resultados em empate, o pareado do juiz é inutilizável como medida de qualidade.
+- **Viés de posição** = prompts em que as duas rodadas (com a ordem trocada) escolheram modelos diferentes, ou seja, o juiz repetiu a mesma POSIÇÃO, dividido pelos prompts válidos: Qwen-juiz 32/48; Llama-juiz 38/48.
+- **Inconsistência de ordem** = (prompts com troca de lado + prompts em que uma rodada deu empate e a outra escolheu um lado) dividido pelos prompts válidos: Qwen-juiz (32 + 6)/48; Llama-juiz (38 + 0)/48. Não é a mesma medida do viés: só coincide quando nenhuma rodada deu empate contra uma escolha.
+
+- Qwen-juiz: 38 empates finais de 48 prompts = 38 por inconsistência de ordem + 0 em que as duas rodadas empataram; só 10 prompts tiveram preferência decisiva.
+- Llama-juiz: 39 empates finais de 48 prompts = 38 por inconsistência de ordem + 1 em que as duas rodadas empataram; só 9 prompts tiveram preferência decisiva.
+
+Com tanta inconsistência e quase todos os resultados em empate, o pareado do juiz é inutilizável como medida de qualidade.
 
 ### 6.4 Entre juízes, autopreferência e injeção
 
@@ -162,7 +172,7 @@ O prompt do juiz teve uma única alteração, da versão v1 para a v2, por um bu
 
 ## 7. Revisão humana
 
-O revisor humano olhou 16 itens sorteados (semente 20260): 8 de tarefas verificáveis e 8 de summarization, e mais 3 itens de `tool_use` escolhidos depois (respostas do Qwen que o scorer aprovou e o Qwen-juiz reprovou). Para cada item viu o enunciado, a resposta, o resultado do scorer e as notas dos juízes. Registro: concordo com todos os 19 itens, ou seja, com a pontuação do scorer determinístico em cada um.
+O revisor humano olhou 16 itens por sorteio estratificado (semente 20260): 8 de tarefas verificáveis (dos quais 4 foram escolhidos entre os casos em que os dois juízes concordam com o scorer e 4 entre os casos em que algum juiz discorda) e 8 de summarization, e mais 3 itens de `tool_use` escolhidos depois (respostas do Qwen que o scorer aprovou e o Qwen-juiz reprovou). Para cada item viu o enunciado, a resposta, o resultado do scorer e as notas dos juízes. Registro: concordo com todos os 19 itens, ou seja, com a pontuação do scorer determinístico em cada um.
 
 **Como ler esta seção:** há um único revisor, a amostra é de 16 itens e o revisor VIU a pontuação do scorer ao decidir (possível ancoragem). Por isso a concordância abaixo é uma verificação de sanidade, e não uma validação independente do scorer.
 
@@ -176,16 +186,11 @@ O revisor humano olhou 16 itens sorteados (semente 20260): 8 de tarefas verific�
 
 Os 3 itens extras de `tool_use` (3/3 de concordância) foram escolhidos por uma característica (o Qwen-juiz reprovou) e ficam FORA da tabela: seriam uma amostra enviesada.
 
-**Ressalva de amostra pequena:** n=16 no total (8 verificáveis, 8 de summarization). Uma concordância de 16/16 com n assim não valida o scorer: o intervalo de confiança é largo, o revisor decidiu vendo o resultado do scorer, e o revisor registrou conferência direta de 6 dos 19 itens (itens 7, 9, 15, 17, 18, 19). Os itens sorteados para ter discordância entre juiz e scorer estão sobrerrepresentados.
+**Ressalva de amostra pequena:** n=16 no total (8 verificáveis, 8 de summarization). Uma concordância de 16/16 com n assim não valida o scorer: o intervalo de confiança é largo e o revisor decidiu vendo o resultado do scorer. Os itens escolhidos por discordância entre juiz e scorer estão sobrerrepresentados.
 
-### 7.2 Juiz x humano (o veredito humano é o do scorer, não é independente)
+### 7.2 Juiz x humano
 
-| Juiz | Verificáveis | Summarization | Todos (n=16) | Extras de tool_use |
-|---|---|---|---|---|
-| Llama-juiz | 4/8 | 7/8 | 11/16 | 3/3 |
-| Qwen-juiz | 8/8 | 1/8 | 9/16 | 0/3 |
-
-Valores = itens em que a aprovação do juiz (nota geral >= 4) coincide com o veredito humano. É a mesma medida da Seção 6, agora contra o humano, em amostra pequena e enviesada para discordâncias.
+A comparação juiz x humano não é reportada porque o humano decidiu vendo o resultado do scorer (logo coincide com ele) e a amostra foi escolhida para incluir discordâncias; a calibração do juiz está na Seção 6.1.
 
 ### 7.3 Ressalvas do revisor (sem mudança no scorer nem no dataset)
 
@@ -202,6 +207,7 @@ Valores = itens em que a aprovação do juiz (nota geral >= 4) coincide com o ve
 - Latências de modelo quente em GPU, uma máquina, sem concorrência (aviso 4).
 - O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras), foi feita por uma só pessoa que viu a pontuação do scorer, e é uma verificação de sanidade, não uma validação independente.
 - Sem causalidade testada: diferenças observadas não são atribuídas a nenhuma causa.
+- A coleta do run foi feita com alterações ainda não commitadas: o commit citado na Seção 3 não reproduz exatamente o código usado, e por isso a reprodução exata a partir do commit não é possível. Os hashes do dataset e do config permitem verificar essas duas partes.
 
 ## 9. Próximos passos
 

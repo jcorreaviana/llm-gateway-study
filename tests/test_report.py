@@ -99,7 +99,8 @@ def make_judge():
                                                  "instruction": {"n": 16, "accuracy": 0.9, "kappa": 0.8}},
                                 "decision": {"meets_criterion": False, "label": "NÃO CONFIÁVEL: fx"},
                                 "error_analysis": {"false_approvals": [{"reason": CANARY_REASON}]}},
-                "pairwise": {"position_bias_index": 0.6, "order_inconsistency": 0.7,
+                "pairwise": {"prompts": 48, "flipped": 29, "tie_vs_pick": 4, "position_bias_index": 0.6,
+                             "order_inconsistency": 0.7,
                              "final_preference": {Q: 3, L: 2, "tie": 43}},
                 "open_tasks": {"summarization": {"pooled": {"spearman": 0.3, "n": 16}},
                                "instruction_extra": {"calibration": {"n": 16, "accuracy": 0.9375, "kappa": 0.76,
@@ -124,7 +125,7 @@ def make_human():
             ("tool_use-01", Q, "tool_use", "extra_tool_use")], 1):
         items.append({"n": n, "prompt_id": pid, "target": tgt, "task_type": tt, "group": grp, "scorer_passed": True,
                       "human_agrees_scorer": True, "human_passed": True, "judge_approved": {Q: False, L: True}})
-    return {"run_id": "fx", "seed": 20260, "statement": "concordo com todos", "checked_directly": [2, 3],
+    return {"run_id": "fx", "seed": 20260, "statement": "concordo com todos",
             "caveats": [{"items": [2], "text": "motivo acidental no scorer"}], "items": items}
 
 
@@ -291,8 +292,14 @@ def test_human_section_has_agreement_tables_and_caveats(results_root, tmp_path):
     assert "FORA da tabela" in sec and "amostra pequena" in sec
     assert "único revisor" in sec and "VIU a pontuação do scorer" in sec and "verificação de sanidade" in sec
     assert "não uma validação independente" in sec
-    assert "| Llama-juiz | 2/2 | 2/2 | 4/4 | 1/1 |" in sec
-    assert "| Qwen-juiz | 0/2 | 0/2 | 0/4 | 0/1 |" in sec
+    assert "conferência direta" not in sec and "conferência direta" not in md
+    assert "por sorteio estratificado (semente 20260)" in sec
+    assert "1 foram escolhidos entre os casos em que os dois juízes concordam com o scorer e 1 entre os casos" in sec
+    assert "16 itens sorteados" not in md and "itens sorteados" not in sec.split("### 7.1")[0]
+    # 7.2: sem tabela juiz x humano, só a explicação
+    sub = sec.split("### 7.2 Juiz x humano")[1].split("### 7.3")[0]
+    assert "|" not in sub and "não é reportada" in sub and "Seção 6.1" in sub
+    assert "Todos (n=" not in sec
     assert "Item(ns) 2 (`instruction-07`): motivo acidental no scorer" in sec
 
 
@@ -451,3 +458,36 @@ def test_per_category_counts_come_from_the_data(results_root, tmp_path):
     assert "(4 por categoria)" in md.split("## 2.")[0]
     assert "4 pares cada" in md.split("## 2.")[0]
     assert rp.per_category_n(make_summary()) == "4"
+
+
+def test_pairwise_measures_are_defined_with_numerator_and_denominator(results_root, tmp_path):
+    md, _ = generate(results_root, tmp_path / "o")
+    sec = md.split("### 6.3")[1].split("### 6.4")[0]
+    assert "**Viés de posição**" in sec and "**Inconsistência de ordem**" in sec
+    assert "Qwen-juiz 29/48" in sec and "Llama-juiz 29/48" in sec
+    assert "Qwen-juiz (29 + 4)/48" in sec
+    assert "43 empates finais de 48 prompts = 33 por inconsistência de ordem + 10 em que as duas rodadas empataram" in sec
+    assert "só 5 prompts tiveram preferência decisiva" in sec
+    assert "Não é a mesma medida do viés" in sec
+
+
+def test_dirty_collection_is_disclosed_in_limitations_only_when_true(results_root, tmp_path):
+    md, _ = generate(results_root, tmp_path / "o")
+    assert "alterações ainda não commitadas" not in md.split("## 8.")[1]  # git_dirty falso na fixture
+    root = tmp_path / "d"
+    run = write_run(root)
+    meta = make_meta()
+    meta["git_dirty"] = True
+    (run / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    md2, _ = generate(root, tmp_path / "o2")
+    lim = md2.split("## 8. Limitações")[1].split("## 9.")[0]
+    assert "alterações ainda não commitadas" in lim and "não reproduz exatamente o código usado" in lim
+    assert "reprodução exata a partir do commit não é possível" in lim and "hashes do dataset e do config" in lim
+
+
+def test_summarization_scorer_fix_is_disclosed_without_overclaiming(results_root, tmp_path):
+    md, _ = generate(results_root, tmp_path / "o")
+    sec = md.split("### 3.1")[1].split("## 4.")[0]
+    assert "BUG de contagem" in sec and "não foi um ajuste de pesos nem de limiar" in sec
+    assert "pós-correção" in sec and "2026-02-03 10:00:00 UTC" in sec  # scored_at do meta.json
+    assert "NÃO dá para confirmar" in sec and "não afirma quantos scores a correção alterou" in sec

@@ -263,6 +263,17 @@ def section_method(meta: dict[str, Any], summary: dict[str, Any], gpu_name: str 
                                                          if dirty else "") + ".",
         f"- **GPU:** {gpu_name or 'não informada (nvidia-smi indisponível)'}.",
         "",
+        "### 3.1 Divulgação: correção do scorer de summarization", "",
+        "Na primeira revisão de uma amostra de respostas, achou-se um defeito do scorer de summarization: em limites "
+        "de \"N passos/tópicos\", a frase de abertura da resposta era contada como um item da lista. A correção "
+        "(só as linhas de lista contam como passo) é de um BUG de contagem, coberta por teste; não foi um ajuste de "
+        "pesos nem de limiar a partir do resultado, e o `STATUS.md` do projeto não registra nenhuma outra mudança "
+        "no scorer. Os scores deste relatório são pós-correção: foram calculados em "
+        f"{str((meta.get('scoring') or {}).get('scored_at', 'n/d'))[:19].replace('T', ' ')} UTC (`meta.json`, "
+        "`scoring.scored_at`), com o scorer já corrigido. O que NÃO dá para confirmar: o histórico do git tem um "
+        "único commit do scorer (feito depois da coleta e depois da correção), então ele não prova a ordem exata dos "
+        "eventos nem o que mudou antes desse commit, e o relatório não afirma quantos scores a correção alterou.",
+        "",
     ]
 
 
@@ -437,10 +448,26 @@ def section_judge(judge: dict[str, Any] | None) -> list[str]:
                      fp.get("tie")])
     out += table(["Juiz", "Viés de posição", "Inconsistência de ordem", "Prefere Qwen", "Prefere Llama",
                   "Empates"], rows)
-    out += ["Viés de posição = fração de prompts em que o juiz escolheu a mesma POSIÇÃO nas duas rodadas (com a "
-            "ordem trocada). Com índices desse tamanho e quase todos os resultados em empate, o pareado do juiz é "
-            "inutilizável como medida de qualidade.", "",
-            "### 6.4 Entre juízes, autopreferência e injeção", ""]
+    out += ["- **Viés de posição** = prompts em que as duas rodadas (com a ordem trocada) escolheram modelos "
+            "diferentes, ou seja, o juiz repetiu a mesma POSIÇÃO, dividido pelos prompts válidos: "
+            + "; ".join(f"{short_name(n)}-juiz {judge['judges'][n]['pairwise'].get('flipped')}/"
+                        f"{judge['judges'][n]['pairwise'].get('prompts')}" for n in names) + ".",
+            "- **Inconsistência de ordem** = (prompts com troca de lado + prompts em que uma rodada deu empate e a "
+            "outra escolheu um lado) dividido pelos prompts válidos: "
+            + "; ".join(f"{short_name(n)}-juiz ({judge['judges'][n]['pairwise'].get('flipped')} + "
+                        f"{judge['judges'][n]['pairwise'].get('tie_vs_pick')})/"
+                        f"{judge['judges'][n]['pairwise'].get('prompts')}" for n in names) + ". Não é a mesma "
+            "medida do viés: só coincide quando nenhuma rodada deu empate contra uma escolha.", ""]
+    for n in names:
+        p = judge["judges"][n]["pairwise"]
+        ties = (p.get("final_preference") or {}).get("tie")
+        inconsistent = (p.get("flipped") or 0) + (p.get("tie_vs_pick") or 0)
+        if ties is not None:
+            out.append(f"- {short_name(n)}-juiz: {ties} empates finais de {p.get('prompts')} prompts = {inconsistent} "
+                       f"por inconsistência de ordem + {ties - inconsistent} em que as duas rodadas empataram; só "
+                       f"{p.get('prompts', 0) - ties} prompts tiveram preferência decisiva.")
+    out += ["", "Com tanta inconsistência e quase todos os resultados em empate, o pareado do juiz é inutilizável "
+            "como medida de qualidade.", "", "### 6.4 Entre juízes, autopreferência e injeção", ""]
     cj = judge.get("cross_judge", {})
     pw_, pr_ = cj.get("pairwise", {}), cj.get("pointwise", {})
     sp = judge.get("self_preference", {})
@@ -486,17 +513,17 @@ def section_human(human: dict[str, Any] | None) -> list[str]:
     extra = [i for i in items if i["group"] == "extra_tool_use"]
     verif = [i for i in core if i["task_type"] != "summarization"]
     summ = [i for i in core if i["task_type"] == "summarization"]
-    judges = sorted({j for i in items for j in i["judge_approved"]})
+    n_agree = sum(1 for i in verif if i["group"] == "agree")
+    n_dis = sum(1 for i in verif if i["group"] == "disagree")
 
     def agree(group: list[dict[str, Any]]) -> str:
         return f"{sum(1 for i in group if i['human_agrees_scorer'])}/{len(group)}"
 
-    def judge_match(group: list[dict[str, Any]], j: str) -> str:
-        return f"{sum(1 for i in group if i['judge_approved'].get(j) == i['human_passed'])}/{len(group)}"
-
     out += [
-        f"O revisor humano olhou {len(core)} itens sorteados (semente {human.get('seed')}): {len(verif)} de "
-        f"tarefas verificáveis e {len(summ)} de summarization, e mais {len(extra)} itens de `tool_use` "
+        f"O revisor humano olhou {len(core)} itens por sorteio estratificado (semente {human.get('seed')}): "
+        f"{len(verif)} de tarefas verificáveis (dos quais {n_agree} foram escolhidos entre os casos em que os dois "
+        f"juízes concordam com o scorer e {n_dis} entre os casos em que algum juiz discorda) e {len(summ)} de "
+        f"summarization, e mais {len(extra)} itens de `tool_use` "
         "escolhidos depois (respostas do Qwen que o scorer aprovou e o Qwen-juiz reprovou). Para cada item viu o "
         "enunciado, a resposta, o resultado do scorer e as notas dos juízes. Registro: " + human["statement"] + ".",
         "", "**Como ler esta seção:** há um único revisor, a amostra é de " + str(len(core)) + " itens e o revisor "
@@ -511,18 +538,12 @@ def section_human(human: dict[str, Any] | None) -> list[str]:
             "característica (o Qwen-juiz reprovou) e ficam FORA da tabela: seriam uma amostra enviesada.", "",
             f"**Ressalva de amostra pequena:** n={len(core)} no total ({len(verif)} verificáveis, {len(summ)} de "
             f"summarization). Uma concordância de {agree(core)} com n assim não valida o scorer: o intervalo de "
-            "confiança é largo, o revisor decidiu vendo o resultado do scorer, e o revisor "
-            f"registrou conferência direta de {len(human.get('checked_directly', []))} dos {len(items)} itens "
-            "(itens " + ", ".join(str(n) for n in human.get("checked_directly", [])) + "). Os itens sorteados "
-            "para ter discordância entre juiz e scorer estão sobrerrepresentados.", "",
-            "### 7.2 Juiz x humano (o veredito humano é o do scorer, não é independente)", ""]
-    rows = []
-    for j in judges:
-        rows.append([short_name(j) + "-juiz", judge_match(verif, j), judge_match(summ, j), judge_match(core, j),
-                     judge_match(extra, j)])
-    out += table(["Juiz", "Verificáveis", "Summarization", f"Todos (n={len(core)})", "Extras de tool_use"], rows)
-    out += ["Valores = itens em que a aprovação do juiz (nota geral >= 4) coincide com o veredito humano. É a "
-            "mesma medida da Seção 6, agora contra o humano, em amostra pequena e enviesada para discordâncias.", "",
+            "confiança é largo e o revisor decidiu vendo o resultado do scorer. Os itens escolhidos por discordância "
+            "entre juiz e scorer estão sobrerrepresentados.", "",
+            "### 7.2 Juiz x humano", "",
+            "A comparação juiz x humano não é reportada porque o humano decidiu vendo o resultado do scorer (logo "
+            "coincide com ele) e a amostra foi escolhida para incluir discordâncias; a calibração do juiz está na "
+            "Seção 6.1.", "",
             "### 7.3 Ressalvas do revisor (sem mudança no scorer nem no dataset)", ""]
     by_n = {i["n"]: i["prompt_id"] for i in items}
     for c in human.get("caveats", []):
@@ -531,8 +552,12 @@ def section_human(human: dict[str, Any] | None) -> list[str]:
     return out + [""]
 
 
-def section_limits(summary: dict[str, Any]) -> list[str]:
+def section_limits(summary: dict[str, Any], meta: dict[str, Any]) -> list[str]:
     total = next(iter(summary["providers"].values()))["overall"]["n"]
+    dirty = [
+        "- A coleta do run foi feita com alterações ainda não commitadas: o commit citado na Seção 3 não reproduz "
+        "exatamente o código usado, e por isso a reprodução exata a partir do commit não é possível. Os hashes do "
+        "dataset e do config permitem verificar essas duas partes."] if meta.get("git_dirty") else []
     return [
         "## 8. Limitações", "",
         f"- Compara só dois modelos de 3B, em um conjunto sintético de {total} prompts em PT-BR "
@@ -548,7 +573,7 @@ def section_limits(summary: dict[str, Any]) -> list[str]:
         "- Latências de modelo quente em GPU, uma máquina, sem concorrência (aviso 4).",
         "- O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras), foi feita por uma só "
         "pessoa que viu a pontuação do scorer, e é uma verificação de sanidade, não uma validação independente.",
-        "- Sem causalidade testada: diferenças observadas não são atribuídas a nenhuma causa.", ""]
+        "- Sem causalidade testada: diferenças observadas não são atribuídas a nenhuma causa.", *dirty, ""]
 
 
 def section_next() -> list[str]:
@@ -579,7 +604,7 @@ def build_markdown(*, run_id: str, summary: dict[str, Any], meta: dict[str, Any]
     out += section_latency(summary, rows, providers)
     out += section_judge(judge)
     out += section_human(human)
-    out += section_limits(summary)
+    out += section_limits(summary, meta)
     out += section_next()
     return "\n".join(out).rstrip("\n") + "\n"
 

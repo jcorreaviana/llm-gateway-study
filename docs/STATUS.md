@@ -180,12 +180,12 @@
   Anthropic; dataset intacto (`c64fa1474d38`); `eval/results/` fora do `git status`.
   - **Revisão humana:** 3 itens de `tool_use` acrescentados ao `judge_review.md` (semente 20260, 3 de 7 candidatos:
     `tool_use-04`, `-03`, `-01`; o Qwen-juiz reprovou respostas que o scorer aprovou, com motivos que se contradizem).
-    Veredito do usuário: concordo com todos os 19 itens (com o scorer em cada um); conferência direta dos itens 7, 9, 15, 17,
-    18 e 19. Ressalvas registradas: item 7 (`instruction-07`) certo por motivo acidental (`ends_with "!"` falha por causa da
+    Veredito do usuário: concordo com todos os 19 itens (com o scorer em cada um). A frase sobre "conferência direta" de
+    itens foi REMOVIDA do relatório e do `human_verdicts.json` por decisão do usuário (restaurar só se ele confirmar). Ressalvas registradas: item 7 (`instruction-07`) certo por motivo acidental (`ends_with "!"` falha por causa da
     aspa final; não existe checagem de "sem aspas"); itens 9 e 15 (summarization) dão crédito a pontos-chave compostos, então
     as aprovações da summarization são um teto. Gravado em `eval/results/m10-full/human_verdicts.json` (local). Concordância
     humano x scorer: 16/16 (8/8 verificáveis, 8/8 summarization), n pequeno; os 3 extras ficam fora da tabela (selecionados
-    por característica). Como o humano concordou com o scorer em tudo, o humano x juiz é o mesmo número da calibração.
+    por característica). A tabela juiz x humano foi removida do relatório (7.2 virou uma frase): o humano decidiu vendo o scorer, então coincide com ele.
   - **Gerador:** `python -m evalkit.report --run-id <id>` grava `reports/fase3-qwen-vs-llama.md` e `.csv` (versionados;
     `git check-ignore` confirma que `reports/` NÃO é ignorado). Determinístico (data do `meta.json`; GPU do `nvidia-smi`, ou
     `--gpu`). 9 seções, 6 avisos obrigatórios (constantes `W_*` testadas). Só agregados e ids: as linhas de `scores.jsonl` passam
