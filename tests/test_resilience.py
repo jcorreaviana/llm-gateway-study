@@ -131,12 +131,13 @@ def test_resilience_config_defaults():
     assert ok.rate_limit.rpm == 5 and ok.rate_limit.tpm is None
 
 
-def test_repo_config_yaml_loads_with_demo_limit():
+def test_repo_config_yaml_has_no_artificial_demo_limits():
     from gateway.config import load_config
 
     cfg = load_config()
-    assert cfg.provider("mock_market").rate_limit.rpm == 5
+    assert cfg.provider("mock_market").rate_limit is None
     assert cfg.provider("ollama_qwen").rate_limit is None
+    assert all(not p.warmup for p in cfg.providers)
 
 
 # --------------------------------------------------------------------------- breaker

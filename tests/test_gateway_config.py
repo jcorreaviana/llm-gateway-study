@@ -1,4 +1,6 @@
-﻿import pytest
+﻿from pathlib import Path
+
+import pytest
 import yaml
 from pydantic import ValidationError
 
@@ -28,6 +30,19 @@ def test_repo_config_is_valid():
     assert c.gateway.force_provider_enabled is False
     assert c.provider("anthropic").enabled is False
     assert "anthropic" not in c.chain
+
+
+def test_demo_config_is_valid_and_keeps_the_demo_limits():
+    repo = Path(__file__).resolve().parent.parent
+    main, demo = load_config(repo / "config.yaml"), load_config(repo / "config.demo.yaml")
+    assert main.chain == demo.chain
+    assert demo.provider("mock_market").rate_limit.rpm == 10
+    assert demo.provider("mock_market").breaker.failure_threshold == 3
+    assert demo.provider("mock_market").breaker.cooldown_s < main.provider("mock_market").breaker.cooldown_s
+    assert demo.provider("ollama_qwen").warmup and demo.provider("ollama_llama").warmup
+    assert demo.provider("anthropic").enabled is False and "anthropic" not in demo.chain
+    assert demo.gateway.force_provider_enabled is True
+    assert main.gateway.force_provider_enabled is False
 
 
 def test_duplicate_provider_name_fails():

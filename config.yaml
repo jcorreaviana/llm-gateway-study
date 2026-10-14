@@ -30,8 +30,9 @@ providers:
     timeout_s: 10
     context_window: 8192
     enabled: true
-    rate_limit: {rpm: 5, tpm: null}   # limite baixo de propósito, para a demo; null = sem limite
-  - name: anthropic               # fora da chain; a chave vem de ANTHROPIC_API_KEY
+    # Sem rate_limit/breaker customizados: valem os padrões (sem limite local; breaker 3 falhas, 30 s).
+    # Os limites artificiais da demo ficam em config.demo.yaml.
+  - name: anthropic              # fora da chain; a chave vem de ANTHROPIC_API_KEY
     type: anthropic
     # sem base_url: o host da Anthropic é fixo no código (a chave nunca vai para outro destino)
     model: claude-haiku-5-5

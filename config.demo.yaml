@@ -1,0 +1,59 @@
+# Configuração da DEMO (scripts/demo.py). Os limites aqui são artificiais, de propósito, para
+# que cada cena apareça rápido. O config.yaml é o de uso geral. Mesmo schema pydantic nos dois.
+#
+# A demo deriva uma cópia temporária deste arquivo, trocando só o que precisa ser dinâmico:
+# portas livres, base_url do mock, caminhos do budget e do recorder (diretório temporário) e,
+# com --fast, o cooldown do breaker. Segredos nunca ficam aqui.
+gateway:
+  port: 8000                      # a demo troca por uma porta livre (bind sempre 127.0.0.1)
+  force_provider_enabled: true    # a cena "Tudo indisponível" usa x-gateway-force-provider
+
+mock_upstream:
+  port: 9001                      # a demo troca por uma porta livre
+
+budget:
+  limit: 30
+  path: data/budget.json          # a demo troca por um arquivo no diretório temporário
+
+recorder:
+  path: logs/requests.jsonl       # a demo troca por um arquivo no diretório temporário
+  record_content: true
+
+chain: [mock_market, ollama_qwen, ollama_llama]
+
+providers:
+  - name: mock_market
+    type: mock
+    base_url: http://127.0.0.1:9001   # a demo troca a porta
+    model: mock-market-1
+    timeout_s: 10
+    context_window: 8192
+    enabled: true
+    # rpm 10 = balde de 10 (reabastece 1 a cada 6 s). Folga para as cenas 1-4 chamarem o mock sem
+    # esgotar o balde; a cena "Limite local" esvazia de propósito.
+    rate_limit: {rpm: 10, tpm: null}
+    breaker: {failure_threshold: 3, cooldown_s: 10, half_open_max_calls: 1}   # cooldown curto
+  - name: anthropic               # fora da chain e DESABILITADO: a demo nunca chama a API real
+    type: anthropic
+    model: claude-haiku-5-5
+    timeout_s: 30
+    context_window: 200000
+    enabled: false
+    real_api_max_input_tokens: 1000
+    max_tokens_cap: 50
+  - name: ollama_qwen
+    type: ollama
+    base_url: http://localhost:11434
+    model: qwen2.5:3b
+    timeout_s: 120
+    context_window: 3072
+    enabled: true
+    warmup: true                  # carrega o modelo antes da primeira cena
+  - name: ollama_llama
+    type: ollama
+    base_url: http://localhost:11434
+    model: llama3.2:3b
+    timeout_s: 120
+    context_window: 3072
+    enabled: true
+    warmup: true
