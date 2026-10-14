@@ -212,8 +212,35 @@ Quebras intencionais (uma de cada vez, restaurada com `git checkout`): troca de 
 `test_reference_and_key_points_only_for_summarization`); neutralização de marcadores removida (3, todos de injeção); nova
 tentativa removida (4); limiar de aprovação 3 em vez de 4 (2).
 
+## Relatório final, Fase 3 (Marco 12)
+
+`tests/test_report.py` (33 testes, fixture sintética em `tmp_path` com respostas-canário; sem rede nem Ollama).
+
+| Requisito | Teste | Situação |
+|---|---|---|
+| Mesma entrada gera saída idêntica (bytes iguais em duas execuções); a data vem do `meta.json` | `test_same_input_gives_identical_output`, `test_date_comes_from_meta_not_from_the_clock` | novo |
+| Nove seções na ordem pedida, Resumo com 5 linhas | `test_sections_are_present_in_order` | novo |
+| Colunas do CSV e linha com valores conhecidos | `test_csv_columns_and_known_row` | novo |
+| Tabelas de resultados e pareada com valores conhecidos; listas de ids; categorias inconclusivas nunca nomeiam vencedor | `test_results_and_paired_tables_have_known_values`, `test_inconclusive_categories_never_name_a_winner`, `test_paired_status_labels`, `test_inconclusive_overall_does_not_claim_a_winner` | novo |
+| Obediência de formato por provedor e tok/s marcado como não comparável em respostas curtas | `test_format_clean_section_counts_and_ids`, `test_latency_marks_short_categories_not_comparable` | novo |
+| Método lista dataset/hash, Ollama, modelos, embedding, commit, GPU; GPU ausente é declarada | `test_method_section_lists_environment`, `test_gpu_is_reported_as_unavailable_when_missing`, `test_detect_gpu_*` | novo |
+| Seis avisos obrigatórios na Seção 2 e repetidos onde relevantes | `test_every_mandatory_warning_is_in_section_2`, `test_warnings_are_repeated_where_relevant` | novo |
+| Seção do juiz: números, linha de base "aprovar tudo", critério, veredito, divulgação v1 para v2, "sem evidência suficiente" (nunca "sem viés") | `test_judge_section_reports_numbers_and_disclosures` | novo |
+| Revisão humana: tabelas de concordância (n total e summarization), extras fora da tabela, ressalvas | `test_human_section_has_agreement_tables_and_caveats`, `test_optional_inputs_missing_are_reported_not_crashing` | novo |
+| Nenhum texto de resposta (nem motivo de juiz, nem valor de `details`) no .md nem no .csv; sem caminho absoluto | `test_no_response_text_in_report_or_csv`, `test_report_has_no_absolute_paths` | novo |
+| Filtro de linhas (`sanitize_score_row`) e do juiz (`judge_view`); trava `find_leaks` recusa gravar | `test_sanitize_score_row_*`, `test_load_score_rows_never_returns_details_values`, `test_judge_view_drops_reasons`, `test_leak_guard_refuses_*`, `test_find_leaks_*` | novo |
+| Entradas ausentes, inválidas ou divergentes dão erro claro; CLI devolve 1 e 0 | `test_missing_summary_or_scores_*`, `test_unknown_run_*`, `test_summary_and_scores_that_disagree_*`, `test_invalid_json_*`, `test_cli_returns_*` | novo |
+| Contagens por categoria vêm dos dados | `test_per_category_counts_come_from_the_data` | novo |
+| `reports/` não é ignorado pelo git | `test_reports_dir_is_not_gitignored` | novo |
+
+Quebras intencionais (uma de cada vez, restaurada): aviso de escopo removido de `WARNINGS` (1 teste falha:
+`test_every_mandatory_warning_is_in_section_2`); filtro `sanitize_score_row` deixando passar `details` e `error_kind`
+(2: `test_sanitize_score_row_drops_everything_*`, `test_load_score_rows_never_returns_details_values`; o teste ponta a
+ponta de canário NÃO falha, porque o relatório não renderiza `details`: quem protege é o teste unitário do filtro);
+trava `find_leaks` desligada (2: `test_leak_guard_refuses_*`, `test_find_leaks_counts_only_long_enough_texts`).
+
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,3% medido no Marco 11, 653 testes + 10 de integração) em `gateway/`,
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,5% medido no Marco 12, 686 testes + 10 de integração) em `gateway/`,
 `mock_upstream/` e `evalkit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.
