@@ -23,13 +23,46 @@ fica lento demais, redireciona a requisição para modelos locais (Qwen e Llama 
 
 ```mermaid
 flowchart LR
-    C[Cliente<br/>POST /v1/chat/completions] --> G[Gateway<br/>127.0.0.1:8000]
-    G --> R{Router<br/>cooldown, breaker, bucket}
-    R -->|1o| M[mock_market<br/>mock upstream :9001]
-    R -->|2o| Q[ollama_qwen<br/>qwen2.5:3b]
-    R -->|3o| L[ollama_llama<br/>llama3.2:3b]
-    R -.->|fora da chain,<br/>desligado| A[anthropic<br/>API real]
-    G --> O[/status, /metrics<br/>recorder JSONL/]
+    C["Cliente<br/>POST /v1/chat/completions"] --> G
+
+    subgraph GW["Gateway 127.0.0.1:8000"]
+        G["API FastAPI"] --> R{"Router<br/>chain"}
+        R --> K1["mock_market<br/>cooldown, breaker, bucket"]
+        R --> K2["ollama_qwen<br/>cooldown, breaker, bucket"]
+        R --> K3["ollama_llama<br/>cooldown, breaker, bucket"]
+        R -.-> K4["anthropic<br/>desligado, 5 travas"]
+        K4 -.-> B[("Budget<br/>data/budget.json")]
+        G --> REC["Recorder<br/>logs/requests.jsonl"]
+        G --> MET["Métricas<br/>/status e /metrics"]
+    end
+
+    K1 -->|1o| U["Mock upstream<br/>127.0.0.1:9001"]
+    K2 -->|2o| O1["Ollama :11434<br/>qwen2.5:3b"]
+    K3 -->|3o| O2["Ollama :11434<br/>llama3.2:3b"]
+    K4 -.-> API["API da Anthropic<br/>(nunca chamada por padrão)"]
+```
+
+### Uma requisição com fallback por 429
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant G as Gateway
+    participant M as mock_market
+    participant Q as ollama_qwen
+
+    C->>G: POST /v1/chat/completions
+    G->>M: disponível? (cooldown, breaker, bucket)
+    M-->>G: sim
+    G->>M: chat
+    M-->>G: 429 + Retry-After
+    Note over G,M: cooldown pelo Retry-After, o 429 não conta para o breaker
+    G->>Q: disponível? (cooldown, breaker, bucket)
+    Q-->>G: sim
+    G->>Q: chat
+    Q-->>G: 200
+    G-->>C: 200 + x-gateway-provider ollama_qwen, x-gateway-fallback-reason mock_market:rate_limited, x-gateway-request-id
+    Note over C,G: próximas requisições: mock_market:cooling_down, pulado sem chamada
 ```
 
 O gateway e o mock escutam **somente em `127.0.0.1`** (o bind não é configurável). O provedor
