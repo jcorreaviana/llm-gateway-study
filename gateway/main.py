@@ -9,6 +9,7 @@ ou chaves.
 import asyncio
 import logging
 import math
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -22,7 +23,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from gateway.budget import Budget
-from gateway.config import HOST, AppConfig, load_config, resolve_path
+from gateway.config import CONFIG_PATH, HOST, AppConfig, load_config, resolve_path
 from gateway.metrics import CONTENT_TYPE, NO_PROVIDER, Metrics
 from gateway.providers import (
     AnthropicProvider,
@@ -218,9 +219,10 @@ def create_app(
 
 
 def app_factory() -> FastAPI:
-    """Para uvicorn: `uvicorn gateway.main:app_factory --factory --host 127.0.0.1`."""
+    """Para uvicorn: `uvicorn gateway.main:app_factory --factory --host 127.0.0.1 --port N`.
+    `GATEWAY_CONFIG` aponta para outro YAML (usado pelos testes de integração)."""
     load_dotenv()
-    return create_app(load_config())
+    return create_app(load_config(os.environ.get("GATEWAY_CONFIG") or CONFIG_PATH))
 
 
 if __name__ == "__main__":

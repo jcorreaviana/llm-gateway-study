@@ -8,6 +8,7 @@ falhas. Não usa modelo real, rede externa, credenciais nem disco. Só escuta em
 """
 
 import asyncio
+import os
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -188,7 +189,10 @@ def create_app(sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> Fas
 
 
 def load_port() -> int:
-    """Lê mock_upstream.port do config.yaml; usa 9001 se ausente."""
+    """Porta do mock: `MOCK_UPSTREAM_PORT` (testes de integração), senão `mock_upstream.port` do
+    config.yaml, senão 9001."""
+    if os.environ.get("MOCK_UPSTREAM_PORT"):
+        return int(os.environ["MOCK_UPSTREAM_PORT"])
     try:
         cfg = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
         return int(cfg.get("mock_upstream", {}).get("port", DEFAULT_PORT))
