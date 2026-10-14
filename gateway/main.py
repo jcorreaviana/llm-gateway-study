@@ -31,6 +31,7 @@ from gateway.providers import (
     build_providers,
 )
 from gateway.ratelimit import Clock
+from gateway.recorder import Recorder
 from gateway.router import (
     AllProvidersFailed,
     Attempt,
@@ -86,10 +87,11 @@ def create_app(
     client: httpx.AsyncClient | None = None,
     now: Clock = time.monotonic,
     budget: Budget | None = None,
+    recorder: Recorder | None = None,
 ) -> FastAPI:
     """`client` permite injetar um AsyncClient (com transports de teste); `now` injeta o
-    relógio de bucket, breaker e cooldown; `budget` injeta o orçamento (o padrão vem do
-    config). Sem `client`, cria um único AsyncClient reutilizado, fechado no shutdown."""
+    relógio de bucket, breaker e cooldown; `budget` e `recorder` injetam o orçamento e o
+    gravador (o padrão vem do config). Sem `client`, cria um único AsyncClient reutilizado, fechado no shutdown."""
     owns_client = client is None
     http = client or httpx.AsyncClient()
     budget = budget or Budget(resolve_path(config.budget.path), config.budget.limit)
@@ -100,6 +102,9 @@ def create_app(
             n: g.breaker.snapshot()["state"] for n, g in router.guards.items()
         },
         budget_remaining=lambda: budget.status().remaining,
+    )
+    recorder = recorder or Recorder(
+        resolve_path(config.recorder.path), config.recorder.record_content
     )
     router = Router(
         config,
@@ -121,6 +126,7 @@ def create_app(
     app.state.router = router  # exposto para inspeção em testes
     app.state.budget = budget
     app.state.metrics = metrics
+    app.state.recorder = recorder
 
     @app.get("/health")
     async def health():
@@ -152,10 +158,26 @@ def create_app(
         x_gateway_force_provider: str | None = Header(default=None),
     ):
         request_id = str(uuid.uuid4())
+        start = time.perf_counter()
+        # O header só vale se force_provider_enabled; caso contrário é ignorado.
+        force = x_gateway_force_provider if config.gateway.force_provider_enabled else None
+        payload = req.model_dump(exclude_none=True)
 
-        def done(resp: Response, provider: str, attempts: list[Attempt]) -> Response:
+        def done(
+            resp: Response, provider: str, attempts: list[Attempt], data: dict | None = None
+        ) -> Response:
             resp.headers["x-gateway-request-id"] = request_id
             metrics.observe_request(provider, resp.status_code, [(n, r.value) for n, r in attempts])
+            recorder.write(recorder.build(
+                request_id=request_id,
+                request=payload,
+                provider=provider,
+                forced_provider=force is not None,
+                fallback_reason=",".join(f"{n}:{r.value}" for n, r in attempts),
+                status=resp.status_code,
+                latency_ms=(time.perf_counter() - start) * 1000,
+                response=data,
+            ))
             return resp
 
         if req.stream:
@@ -163,10 +185,6 @@ def create_app(
                 400, "stream=true não é suportado por este gateway (streaming fora do escopo).",
                 "invalid_request_error",
             ), NO_PROVIDER, [])
-        # O header só vale se force_provider_enabled; caso contrário é ignorado.
-        force = x_gateway_force_provider if config.gateway.force_provider_enabled else None
-        payload = req.model_dump(exclude_none=True)
-
         try:
             result = await router.route(payload, request_id, force)
         except UnknownProvider as e:
@@ -192,7 +210,9 @@ def create_app(
             return done(resp, NO_PROVIDER, e.attempts)
 
         headers = {"x-gateway-provider": result.provider, **_fallback_header(result.fallbacks)}
-        return done(JSONResponse(result.data, headers=headers), result.provider, result.fallbacks)
+        return done(
+            JSONResponse(result.data, headers=headers), result.provider, result.fallbacks, result.data
+        )
 
     return app
 
