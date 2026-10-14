@@ -1,0 +1,50 @@
+# Configuração da AVALIAÇÃO (python -m evalkit.run). O objetivo é medir, não proteger: sem rate limit
+# local, breaker praticamente desligado e timeouts generosos. Mesmo schema pydantic dos outros configs.
+#
+# Fase 3 NÃO usa a Anthropic: o provedor `anthropic` fica DESABILITADO e fora da chain, e o runner
+# recusa rodar se isso mudar. Segredos nunca ficam aqui.
+#
+# O runner deriva uma cópia temporária deste arquivo, trocando só o que precisa ser dinâmico: portas
+# livres e os caminhos de budget e recorder (vão para eval/results/<run_id>/, ignorado pelo git).
+gateway:
+  port: 8000                      # o runner troca por uma porta livre (bind sempre 127.0.0.1)
+  force_provider_enabled: true    # o runner força um provedor por vez (x-gateway-force-provider)
+
+mock_upstream:
+  port: 9001                      # a pilha compartilhada sobe o mock também, mas ele fica fora da chain
+
+budget:
+  limit: 30
+  path: eval/results/_config/budget.json        # o runner troca por eval/results/<run_id>/budget.json
+
+recorder:
+  path: eval/results/_config/requests.jsonl     # o runner troca por eval/results/<run_id>/gateway_requests.jsonl
+  record_content: true
+
+chain: [ollama_qwen, ollama_llama]
+
+providers:
+  - name: anthropic               # DESABILITADO e fora da chain: a Fase 3 nunca chama a API real
+    type: anthropic
+    model: claude-haiku-5-5
+    timeout_s: 30
+    context_window: 200000
+    enabled: false
+  - name: ollama_qwen
+    type: ollama
+    base_url: http://localhost:11434
+    model: qwen2.5:3b
+    timeout_s: 120
+    context_window: 3072          # menor que o contexto carregado (4096): prompt + resposta + margem
+    enabled: true
+    warmup: true
+    breaker: {failure_threshold: 1000, cooldown_s: 1, half_open_max_calls: 1}
+  - name: ollama_llama
+    type: ollama
+    base_url: http://localhost:11434
+    model: llama3.2:3b
+    timeout_s: 120
+    context_window: 3072
+    enabled: true
+    warmup: true
+    breaker: {failure_threshold: 1000, cooldown_s: 1, half_open_max_calls: 1}
