@@ -176,7 +176,7 @@
     decisão não foi tocado e o prompt não foi ajustado a partir de concordância. No smoke (v1, 20 respostas verificáveis)
     e na execução completa (v2) nenhum juiz chegou perto do critério.
 
-- **Marco 12 (Fase 3: relatório final, README e fechamento): concluído localmente, AGUARDA confirmação do push.** Sem
+- **Marco 12 (Fase 3: relatório final, README e fechamento): concluído localmente, AGUARDA o push (o usuário ainda revisa o relatório).** Sem
   Anthropic; dataset intacto (`c64fa1474d38`); `eval/results/` fora do `git status`.
   - **Revisão humana:** 3 itens de `tool_use` acrescentados ao `judge_review.md` (semente 20260, 3 de 7 candidatos:
     `tool_use-04`, `-03`, `-01`; o Qwen-juiz reprovou respostas que o scorer aprovou, com motivos que se contradizem).
@@ -191,15 +191,25 @@
     `--gpu`). 9 seções, 6 avisos obrigatórios (constantes `W_*` testadas). Só agregados e ids: as linhas de `scores.jsonl` passam
     por `sanitize_score_row` (`details` vira só `format_clean`), do juiz só se leem números e rótulos (`judge_view`), e
     `find_leaks` recusa gravar se algum trecho de resposta ou motivo de juiz (>= 12 caracteres) aparecer na saída.
-  - **Testes:** 33 novos (`tests/test_report.py`); suíte 686 passando + 10 de integração; cobertura 96,54%; ruff limpo;
+  - **Testes:** 33 novos (`tests/test_report.py`) mais 3 de ordenação; suíte 689 passando + 10 de integração; cobertura 96,58%; ruff limpo;
     `check_secrets.py` limpo (arquivos e `--history`); sem caminho absoluto em `reports/`. 3 quebras intencionais: aviso de
     escopo removido (1 teste falha), filtro `sanitize_score_row` aberto (2 falham; o teste ponta a ponta de canário NÃO
     detecta, porque o relatório não renderiza `details`), trava `find_leaks` desligada (2 falham).
   - **README:** seção "Fase 3: avaliação" (Mermaid validado com o Mermaid CLI, comandos, resultado em 5 linhas, limitações) e
     Roadmap atualizado (Fase 3 concluída, 3b e 2 planejadas). Clone limpo: instalação, `validate_dataset`, 685 testes e
     geração do relatório com a fixture (CLI) funcionaram sem correção; só o `m10-full` não existe no clone (esperado, é local).
-  - **Pendência herdada:** o CI do Marco 11 está vermelho no ubuntu por falta de `sorted` em
-    `tests/test_judge.py::test_execute_runs_every_judgment_and_records_meta` (defeito do teste). Não corrigido, a pedido.
+  - **Ordenação determinística (autorizada) e CI do Marco 11:** o CI vermelho no ubuntu era falta de `sorted` em
+    `tests/test_judge.py::test_execute_runs_every_judgment_and_records_meta` (defeito do teste); corrigido. Varredura de
+    `glob`/`rglob`/`iterdir`/`listdir` em `tests/`, `evalkit/`, `scripts/` e `gateway/`: o resto já estava ordenado. O teste novo
+    (`tests/test_result_ordering.py`, 3 testes, embaralha linhas e ordem de criação dos arquivos) achou um defeito de produção
+    que a varredura não via: `evalkit.score.score_run` gravava o `scores.jsonl` na ordem de chegada das linhas; agora ordena por
+    (provedor, `prompt_id`). `summary.json` e o relatório já eram independentes da ordem.
+  - **Redação da revisão humana:** a Seção 7 e a Seção 8 do relatório e o README dizem que há um único revisor, 16 itens, e que o
+    revisor viu a pontuação do scorer (possível ancoragem): 16/16 é verificação de sanidade, não validação independente.
+    Também suavizadas frases causais sem teste (`reasoning` "pode penalizar", efeito não medido; autopreferência).
+  - **Regra do CI:** o CI só conta como verde depois do push de verificação (um run verde nas duas plataformas, ubuntu-24.04 e
+    windows-latest, no HEAD empurrado); testes locais no Windows não provam o Linux. Se o CI ficar vermelho: parar e mostrar o
+    job, o passo e o trecho do log.
 
 ## Decisões
 - **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
@@ -438,8 +448,8 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. Marco 12: aguarda a confirmação do push (e a decisão sobre corrigir o `sorted` do teste do Marco 11 que deixa o CI do ubuntu
-   vermelho). Depois do push: acompanhar o CI pelo `gh`.
+1. Marco 12: aguarda a confirmação do push depois da revisão do relatório. Depois do push: acompanhar o CI pelo `gh` até ficar verde
+   nas duas plataformas.
 2. Os 48 prompts estão coletados e pontuados no run `m10-full` (ignorado pelo git). Para repetir e regerar o relatório, veja a
    seção "Fase 3: avaliação" do README.
 3. **Fase 3b (depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts. **Variante de

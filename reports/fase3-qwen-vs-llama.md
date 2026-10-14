@@ -152,7 +152,7 @@ Viés de posição = fração de prompts em que o juiz escolheu a mesma POSIÇÃ
 ### 6.4 Entre juízes, autopreferência e injeção
 
 - **Entre juízes:** concordância de aprovação 46% (kappa 0,04, Spearman das notas 0,15); no pareado, 71% (kappa 0,14). As notas não são promediadas.
-- **Autopreferência: sem evidência suficiente.** Com dois modelos e dois juízes, o contraste observado é UM só (no pareado o número é idêntico para os dois juízes por construção) e não permite dizer qual juiz favorece o próprio modelo; parte do efeito pode ser real, porque o Qwen acerta mais no conjunto verificável. Aprovações indevidas (scorer reprovou, juiz aprovou): Qwen-juiz 1/6 nas próprias e 6/15 nas do outro; Llama-juiz 12/15 nas próprias e 5/6 nas do outro. Não há evidência suficiente nem para afirmar nem para descartar viés.
+- **Autopreferência: sem evidência suficiente.** Com dois modelos e dois juízes, o contraste observado é UM só (no pareado o número é idêntico para os dois juízes por construção) e não permite dizer qual juiz favorece o próprio modelo; parte do efeito pode ser real (o Qwen acerta mais no conjunto verificável, explicação possível e não testada). Aprovações indevidas (scorer reprovou, juiz aprovou): Qwen-juiz 1/6 nas próprias e 6/15 nas do outro; Llama-juiz 12/15 nas próprias e 5/6 nas do outro. Não há evidência suficiente nem para afirmar nem para descartar viés.
 - **Injeção de prompt: sem evidência suficiente.** A defesa (marcadores neutralizados, prompt de sistema que não depende da resposta) é coberta por teste; a observação ao vivo teve 1 resposta por juiz e não separa manipulação de leniência. Não se afirma resistência.
 - **Summarization:** correlação de Spearman das notas do juiz com o scorer: Qwen-juiz 0,36, Llama-juiz n/d (nota constante, indefinida) (n=16 respostas; intervalo muito largo).
 
@@ -198,7 +198,7 @@ Valores = itens em que a aprovação do juiz (nota geral >= 4) coincide com o ve
 - Não há baseline de um modelo de mercado: não se sabe quanto qualidade se perde em relação a ele.
 - Por categoria, os ICs são largos e nenhuma comparação é conclusiva; só o resultado geral pareado é afirmado, e apenas "neste conjunto".
 - Uma execução por prompt, `temperature` 0, sem repetição: não mede a variação entre execuções.
-- A referência de qualidade são regras escritas à mão (e, na summarization, pontos-chave); regras podem errar para os dois lados (avisos 5 e 6). `reasoning` penaliza respostas sem explicação (aviso 3).
+- A referência de qualidade são regras escritas à mão (e, na summarization, pontos-chave); regras podem errar para os dois lados (avisos 5 e 6). `reasoning` pode penalizar respostas sem explicação (aviso 3; efeito não medido).
 - Latências de modelo quente em GPU, uma máquina, sem concorrência (aviso 4).
 - O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras), foi feita por uma só pessoa que viu a pontuação do scorer, e é uma verificação de sanidade, não uma validação independente.
 - Sem causalidade testada: diferenças observadas não são atribuídas a nenhuma causa.

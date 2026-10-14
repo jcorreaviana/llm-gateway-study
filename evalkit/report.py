@@ -452,8 +452,8 @@ def section_judge(judge: dict[str, Any] | None) -> list[str]:
         "promediadas.",
         "- **Autopreferência: sem evidência suficiente.** Com dois modelos e dois juízes, o contraste observado é "
         "UM só (no pareado o número é idêntico para os dois juízes por construção) e não permite dizer qual juiz "
-        "favorece o próprio modelo; parte do efeito pode ser real, porque o Qwen acerta mais no conjunto "
-        "verificável. Aprovações indevidas (scorer reprovou, juiz aprovou): "
+        "favorece o próprio modelo; parte do efeito pode ser real (o Qwen acerta mais no conjunto "
+        "verificável, explicação possível e não testada). Aprovações indevidas (scorer reprovou, juiz aprovou): "
         + "; ".join(f"{short_name(n)}-juiz {own[n].get('false_approvals_on_own_answers', {}).get('judge_approved')}/"
                     f"{own[n].get('false_approvals_on_own_answers', {}).get('scorer_failed')} nas próprias e "
                     f"{own[n].get('false_approvals_on_other_answers', {}).get('judge_approved')}/"
@@ -543,7 +543,8 @@ def section_limits(summary: dict[str, Any]) -> list[str]:
         "afirmado, e apenas \"neste conjunto\".",
         "- Uma execução por prompt, `temperature` 0, sem repetição: não mede a variação entre execuções.",
         "- A referência de qualidade são regras escritas à mão (e, na summarization, pontos-chave); regras podem "
-        "errar para os dois lados (avisos 5 e 6). `reasoning` penaliza respostas sem explicação (aviso 3).",
+        "errar para os dois lados (avisos 5 e 6). `reasoning` pode penalizar respostas sem explicação "
+        "(aviso 3; efeito não medido).",
         "- Latências de modelo quente em GPU, uma máquina, sem concorrência (aviso 4).",
         "- O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras), foi feita por uma só "
         "pessoa que viu a pontuação do scorer, e é uma verificação de sanidade, não uma validação independente.",
