@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # check_secrets.py --history precisa do histórico completo
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+      - name: Checar segredos (arquivos e histórico)
+        run: python scripts/check_secrets.py --history
+      - name: Lint
+        run: ruff check .
+      - name: Testes com cobertura (sem integração, sem segredos)
+        run: pytest --cov
