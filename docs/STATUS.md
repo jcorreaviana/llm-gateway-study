@@ -122,7 +122,13 @@
     `sentence-transformers` e `torch` na `.venv`. A `Qwen2.5-0.5B-Instruct` no mesmo cache (954 MB) é anterior e
     não tem relação com este projeto.
 
-- **Marco 11 (Fase 3: juiz local, calibração e revisão humana): concluído, SEM push ainda** (aguarda confirmação).
+- **Marco 11 (Fase 3: juiz local, calibração e revisão humana): concluído e publicado** (push normal, sem `--force`, de
+  `520fec0` a `6f8f637`; autor só noreply, 0 trailers `Co-Authored-By`, `eval/results/` fora do `git ls-files`,
+  `check_secrets.py` limpo em arquivos e `--history`). **CI do HEAD `6f8f637`: verde em windows-latest, VERMELHO em
+  ubuntu-24.04.** Job `test (ubuntu-24.04)`, passo "Testes com cobertura (sem integração, sem segredos)": falha só
+  `tests/test_judge.py::test_execute_runs_every_judgment_and_records_meta` (linha 493), que compara
+  `[p.name for p in run_dir.glob("*.jsonl")]` com `[llama, qwen]`; no Linux o `glob` não vem ordenado (veio qwen antes de
+  llama). É defeito do TESTE (falta `sorted`), não do código; no Windows a ordem coincidiu. NÃO corrigido ainda, a pedido.
   `evalkit/judge_prompts.py` (rubricas por `task_type`, prompts PT-BR, hash), `judge.py` (pontual + pareado com troca de
   ordem, parser tolerante, uma nova tentativa, `judge_error`, `--resume`), `judge_stats.py` (kappa, acurácia, Spearman,
   viés de posição) e `judge_report.py` (`judge_summary.json` + `judge_review.md`). Testes: 653 passando + 10 de integração
