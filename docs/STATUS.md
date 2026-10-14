@@ -65,8 +65,10 @@
   cobertura 97,33%, ruff limpo. **CI do novo HEAD (`6ccc8ed`): verde em ubuntu-latest e windows-latest.**
   Backup local e refs do filter-branch removidos.
 
-- **Marco 9 (Fase 3: CI, dataset e runner): concluído e commitado** (6 commits locais; push aguardando confirmação,
-  exceto o de CI, já publicado).
+- **Marco 9 (Fase 3: CI, dataset e runner): concluído e publicado** (push normal, sem `--force`, de `2ba8187` a
+  `e635fbf`; antes do push: autor só noreply, 0 trailers `Co-Authored-By`, `git ls-files` com o dataset e sem
+  `eval/results/` nem `eval/baseline/`, `check_secrets.py` limpo em arquivos e `--history`). **CI do HEAD
+  `e635fbf`: verde em windows-latest e ubuntu-24.04** (checkout@v7 e setup-python@v7, todos os passos).
   - **CI atualizado e verde:** `ubuntu-24.04` fixo (no lugar de `ubuntu-latest`), `actions/checkout@v7` e
     `actions/setup-python@v7` (ambas `using: node24`, confirmado no `action.yml` das tags; releases mais recentes
     v7.0.1 e v7.0.0). Run do push `2ba8187`: verde em ubuntu-24.04 e windows-latest, sem aviso de Node 20.
