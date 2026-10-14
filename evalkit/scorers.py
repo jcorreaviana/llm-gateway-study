@@ -481,6 +481,20 @@ def length_ok(text: str, prompt_text: str, truncated: bool) -> tuple[bool, dict[
     return (got <= limit["n"] if not limit["exact"] or limit["unit"] == "frases" else got == limit["n"]), info
 
 
+def _note_truncation(embedder: Embedder, texts: list[str], details: dict[str, Any]) -> None:
+    """Se o embedder sabe dizer, registra quando referência ou resposta passam do limite de tokens do modelo
+    (o excedente é ignorado na similaridade). Falha aqui nunca afeta a pontuação."""
+    check = getattr(embedder, "truncated", None)
+    if check is None:
+        return
+    try:
+        ref_cut, ans_cut = check(texts)
+        details["embedding_truncated"] = {"reference": bool(ref_cut), "answer": bool(ans_cut),
+                                          "max_seq_length": getattr(embedder, "max_seq_length", None)}
+    except Exception as e:  # noqa: BLE001
+        details["embedding_truncated"] = f"unknown ({type(e).__name__})"
+
+
 def score_summarization(prompt: EvalPrompt, text: str, embedder: Embedder | None, *, truncated: bool = False) -> Score:
     body, fenced = unfence(as_text(text))
     coverage, per_point = key_point_coverage(body, prompt.key_points or [])
@@ -496,6 +510,7 @@ def score_summarization(prompt: EvalPrompt, text: str, embedder: Embedder | None
             ref_vec, ans_vec = embedder.embed([prompt.reference_answer or "", body])
             sim = max(0.0, min(1.0, cosine(ref_vec, ans_vec)))
             details["embedding"] = "ok"
+            _note_truncation(embedder, [prompt.reference_answer or "", body], details)
             details["similarity"] = round(sim, 4)
             parts["similarity"] = sim
         except Exception as e:  # noqa: BLE001 - o embedder é injetável; nada pode derrubar o run

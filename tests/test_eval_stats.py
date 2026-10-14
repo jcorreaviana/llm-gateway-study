@@ -287,3 +287,14 @@ def test_verdict_is_inconclusive_when_ci_excludes_zero_but_mcnemar_does_not_conf
     assert blk["diff_ci95"][0] > 0 and blk["mcnemar"]["p_exact"] == 0.25
     assert sc.INCONCLUSIVE in blk["verdict"] and "não confirma" in blk["verdict"]
     assert "a favor de" not in blk["verdict"]
+
+
+def test_scoring_meta_records_how_the_run_was_scored(tmp_path):
+    root = synthetic_results(tmp_path)
+    meta = {"run_id": "r1", "scope": "x", "dataset_hash": "h"}
+    (root / "r1" / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    sc.main(["--run-id", "r1", "--results-root", str(root), "--no-embedding"])
+    saved = json.loads((root / "r1" / "meta.json").read_text(encoding="utf-8"))
+    assert saved["run_id"] == "r1" and saved["scoring"]["embedding"] == "disabled"
+    assert saved["scoring"]["seed"] == sc.DEFAULT_SEED and "scored_at" in saved["scoring"]
+    assert not list((root / "r1").glob("*.tmp"))

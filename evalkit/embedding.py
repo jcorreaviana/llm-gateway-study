@@ -14,6 +14,9 @@ from collections.abc import Sequence
 from typing import Protocol
 
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# Commit do Hugging Face fixado: o mesmo modelo hoje e daqui a um ano (outro modelo => outra revision, sem fallback).
+DEFAULT_REVISION = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+DEVICE = "cpu"  # fixo: resultados iguais em qualquer máquina, sem depender de GPU/CUDA
 
 
 class EmbeddingUnavailable(Exception):
@@ -36,7 +39,10 @@ def cosine(a: Sequence[float], b: Sequence[float]) -> float:
 class SentenceTransformerEmbedder:
     """Implementação real. O import e o carregamento são preguiçosos (só em `__init__`)."""
 
-    def __init__(self, model_name: str = DEFAULT_MODEL, *, allow_download: bool = False) -> None:
+    def __init__(self, model_name: str = DEFAULT_MODEL, *, allow_download: bool = False,
+                 revision: str | None = None) -> None:
+        if revision is None and model_name == DEFAULT_MODEL:
+            revision = DEFAULT_REVISION
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as e:
@@ -44,18 +50,36 @@ class SentenceTransformerEmbedder:
                 "sentence-transformers não instalado (pip install -r requirements-eval.txt)"
             ) from e
         try:
-            self._model = SentenceTransformer(model_name, local_files_only=not allow_download)
+            self._model = SentenceTransformer(
+                model_name, revision=revision, device=DEVICE, local_files_only=not allow_download
+            )
         except Exception as e:  # noqa: BLE001 - erros do huggingface/torch variam por versão
             raise EmbeddingUnavailable(f"modelo {model_name} indisponível ({type(e).__name__})") from e
         self.model_name = model_name
+        self.revision = revision
+
+    @property
+    def max_seq_length(self) -> int:
+        return int(self._model.max_seq_length)
+
+    def info(self) -> dict[str, object]:
+        return {"model": self.model_name, "revision": self.revision or "unpinned", "device": str(self._model.device),
+                "max_seq_length": self.max_seq_length}
+
+    def truncated(self, texts: Sequence[str]) -> list[bool]:
+        """O texto passa de `max_seq_length` tokens (o modelo corta o excedente em silêncio)?"""
+        ids = self._model.tokenizer(list(texts), add_special_tokens=True, truncation=False)["input_ids"]
+        return [len(x) > self.max_seq_length for x in ids]
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         return [list(map(float, v)) for v in self._model.encode(list(texts), convert_to_numpy=True)]
 
 
-def load_embedder(model_name: str = DEFAULT_MODEL, *, allow_download: bool = False) -> tuple[Embedder | None, str]:
+def load_embedder(
+    model_name: str = DEFAULT_MODEL, *, allow_download: bool = False, revision: str | None = None
+) -> tuple[Embedder | None, str]:
     """(embedder, status). Nunca levanta: sem dependência/modelo devolve (None, motivo)."""
     try:
-        return SentenceTransformerEmbedder(model_name, allow_download=allow_download), "ok"
+        return SentenceTransformerEmbedder(model_name, allow_download=allow_download, revision=revision), "ok"
     except EmbeddingUnavailable as e:
         return None, f"unavailable: {e}"

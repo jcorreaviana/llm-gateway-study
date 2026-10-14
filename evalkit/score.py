@@ -17,10 +17,12 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import random
 import sys
 from collections import Counter
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -309,6 +311,20 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def record_scoring_meta(run_dir: Path, meta: dict[str, Any] | None, summary: dict[str, Any]) -> None:
+    """Registra no `meta.json` do run COMO a pontuação foi feita (modelo, revision, device), para reproduzir."""
+    if meta is None:
+        return
+    meta["scoring"] = {
+        "scored_at": datetime.now(UTC).isoformat(timespec="seconds"), "seed": summary["seed"],
+        "embedding": summary["embedding"], "embedding_info": summary["embedding_info"],
+    }
+    path = run_dir / "meta.json"
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def execute(args: argparse.Namespace, out: Callable[[str], None] = print) -> dict[str, Any]:
     run_dir = args.results_root / args.run_id
     results = load_run(run_dir)
@@ -324,12 +340,15 @@ def execute(args: argparse.Namespace, out: Callable[[str], None] = print) -> dic
     rows = score_run(results, prompts, embedder)
     meta_path = run_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else None
+    info = embedder.info() if embedder is not None and hasattr(embedder, "info") else None
     summary = build_summary(
         rows, run_id=args.run_id, seed=args.seed, embedding=embedding, meta=meta, dataset_sha=dataset_hash(PROMPTS_DIR)
     )
+    summary["embedding_info"] = info
     scores_text = "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
     (run_dir / "scores.jsonl").write_text(scores_text, encoding="utf-8")
     (run_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    record_scoring_meta(run_dir, meta, summary)
     out(format_summary(summary))
     if summary["dataset_hash_run"] and summary["dataset_hash_run"] != summary["dataset_hash_now"]:
         out("\naviso: o dataset mudou desde a coleta (hash diferente do meta.json); registre uma nova versão.")
