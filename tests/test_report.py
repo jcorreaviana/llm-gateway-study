@@ -442,3 +442,10 @@ def test_reports_dir_is_not_gitignored():
     for name in ("reports/fase3-qwen-vs-llama.md", "reports/fase3-qwen-vs-llama.csv"):
         res = subprocess.run(["git", "check-ignore", "-q", name], cwd=REPO_ROOT, check=False)
         assert res.returncode == 1, f"{name} está ignorado pelo git"
+
+
+def test_per_category_counts_come_from_the_data(results_root, tmp_path):
+    md, _ = generate(results_root, tmp_path / "o")  # a fixture tem 4 prompts por categoria
+    assert "(4 por categoria)" in md.split("## 2.")[0]
+    assert "4 pares cada" in md.split("## 2.")[0]
+    assert rp.per_category_n(make_summary()) == "4"

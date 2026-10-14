@@ -181,6 +181,12 @@ def paired_status(block: dict[str, Any]) -> tuple[str, bool]:
     return "diferença detectada", True
 
 
+def per_category_n(summary: dict[str, Any]) -> str:
+    """Prompts por categoria lidos dos dados (\"8\", ou \"4 a 8\" se variar)."""
+    sizes = sorted({g["n"] for b in summary["providers"].values() for g in b["by_task_type"].values()})
+    return "n/d" if not sizes else str(sizes[0]) if len(sizes) == 1 else f"{sizes[0]} a {sizes[-1]}"
+
+
 def section_summary(summary: dict[str, Any], a: str, b: str, judge: dict[str, Any] | None) -> list[str]:
     ov = summary["providers"]
     pa, pb = ov[a]["overall"], ov[b]["overall"]
@@ -193,8 +199,8 @@ def section_summary(summary: dict[str, Any], a: str, b: str, judge: dict[str, An
     who = short_name(a) if d >= 0 else short_name(b)
     lines = [
         f"1. Escopo: {short_name(a)} (qwen2.5:3b) contra {short_name(b)} (llama3.2:3b) via gateway, em "
-        f"{pa['n']} prompts sintéticos em PT-BR (8 por categoria). Não mede a perda em relação a um modelo de "
-        "mercado; nenhuma chamada à Anthropic.",
+        f"{pa['n']} prompts sintéticos em PT-BR ({per_category_n(summary)} por categoria). Não mede a perda em "
+        "relação a um modelo de mercado; nenhuma chamada à Anthropic.",
         f"2. Neste conjunto: aprovação de {pct(pa['pass_rate'])} (IC95% {ci_text(pa['pass_rate_ci95'])}) para o "
         f"{short_name(a)} e {pct(pb['pass_rate'])} (IC95% {ci_text(pb['pass_rate_ci95'])}) para o {short_name(b)}.",
         f"3. Pareado, neste conjunto: diferença média de score {num(d)} (IC95% "
@@ -202,7 +208,7 @@ def section_summary(summary: dict[str, Any], a: str, b: str, judge: dict[str, An
         f"p={num(mc['p_exact'], 4)}; " + (f"diferença detectada a favor do {who}, " if conclusive
                                           else "indicativo, não conclusivo, ")
         + "sem generalizar para outros modelos ou domínios.",
-        "4. Por categoria (8 pares cada), " + (
+        f"4. Por categoria ({per_category_n(summary)} pares cada), " + (
             "nenhuma comparação é conclusiva: todas são \"indicativo, não conclusivo\"." if n_conclusive == 0
             else f"{n_conclusive} de {len(by_cat)} comparações são conclusivas; as demais são \"indicativo, não "
                  "conclusivo\"."),
@@ -235,9 +241,10 @@ def section_method(meta: dict[str, Any], summary: dict[str, Any], gpu_name: str 
     n_per = {p: v["overall"]["n"] for p, v in summary["providers"].items()}
     return [
         "## 3. Método", "",
-        f"- **Dataset:** sintético, PT-BR, 6 categorias ({', '.join(CATEGORY_ORDER)}) x 8 prompts = "
-        f"{next(iter(n_per.values()), 0)} prompts por provedor. Hash SHA-256 `{ds[:12]}` (completo: `{ds}`); o hash "
-        "no momento da pontuação é " + ("o mesmo." if summary.get("dataset_hash_now") == ds else "DIFERENTE (!)."),
+        f"- **Dataset:** sintético, PT-BR, {len(CATEGORY_ORDER)} categorias ({', '.join(CATEGORY_ORDER)}) x "
+        f"{per_category_n(summary)} prompts = {next(iter(n_per.values()), 0)} prompts por provedor. Hash SHA-256 "
+        f"`{ds[:12]}` (completo: `{ds}`); o hash no momento da pontuação é "
+        + ("o mesmo." if summary.get("dataset_hash_now") == ds else "DIFERENTE (!)."),
         f"- **Modelos:** {models}. Ollama {meta.get('ollama_version', 'n/d')}.",
         "- **Execução:** um provedor por vez, em sequência, via gateway com provedor forçado, `temperature` 0, "
         "uma execução por prompt (sem repetição), warm-up descartado antes da medição, `context_window` 3072, "
@@ -522,10 +529,12 @@ def section_human(human: dict[str, Any] | None) -> list[str]:
     return out + [""]
 
 
-def section_limits() -> list[str]:
+def section_limits(summary: dict[str, Any]) -> list[str]:
+    total = next(iter(summary["providers"].values()))["overall"]["n"]
     return [
         "## 8. Limitações", "",
-        "- Compara só dois modelos de 3B, em um conjunto sintético de 48 prompts em PT-BR (8 por categoria); nada "
+        f"- Compara só dois modelos de 3B, em um conjunto sintético de {total} prompts em PT-BR "
+        f"({per_category_n(summary)} por categoria); nada "
         "aqui se generaliza para outros modelos, tamanhos ou domínios.",
         "- Não há baseline de um modelo de mercado: não se sabe quanto qualidade se perde em relação a ele.",
         "- Por categoria, os ICs são largos e nenhuma comparação é conclusiva; só o resultado geral pareado é "
@@ -567,7 +576,7 @@ def build_markdown(*, run_id: str, summary: dict[str, Any], meta: dict[str, Any]
     out += section_latency(summary, rows, providers)
     out += section_judge(judge)
     out += section_human(human)
-    out += section_limits()
+    out += section_limits(summary)
     out += section_next()
     return "\n".join(out).rstrip("\n") + "\n"
 
