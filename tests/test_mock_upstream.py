@@ -47,13 +47,31 @@ async def test_server_error_uses_configured_status(client, status):
     assert "message" in r.json()["error"]
 
 
-async def test_slow_respects_latency(client):
-    await client.post("/chaos", json={"mode": "slow", "latency_ms": 150})
-    start = time.perf_counter()
-    r = await chat(client)
-    elapsed = time.perf_counter() - start
+async def test_slow_respects_latency():
+    """Mede o PEDIDO de espera (sleep injetado), não o relógio: nada de limite em ms."""
+    waits: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    transport = httpx.ASGITransport(app=create_app(sleep=fake_sleep))
+    async with httpx.AsyncClient(transport=transport, base_url="http://mock") as c:
+        assert (await chat(c)).status_code == 200
+        assert waits == []  # modo normal não espera
+        await c.post("/chaos", json={"mode": "slow", "latency_ms": 150})
+        r = await chat(c)
     assert r.status_code == 200
-    assert elapsed >= 0.14
+    assert waits == [0.15]
+
+
+async def test_slow_really_waits_with_generous_tolerance(client):
+    """Sanidade com relógio real, só limite inferior e folgado (o timer do Windows tem ~15 ms
+    de granularidade): esperou pelo menos metade do pedido."""
+    await client.post("/chaos", json={"mode": "slow", "latency_ms": 400})
+    start = time.monotonic()
+    r = await chat(client)
+    assert r.status_code == 200
+    assert time.monotonic() - start >= 0.2
 
 
 async def test_fail_every_n_fails_exactly_on_nth(client):

@@ -96,7 +96,7 @@ preenchida pelo teste indicado.
 |---|---|---|
 | Nenhum teste escreve em `data/` ou `logs/` do repositório | `conftest.py` (`_isolate_project_paths`, autouse) + `test_suite_isolation.py` | novo |
 | Nenhum teste abre conexão para fora de `127.0.0.1`/`localhost` | `conftest.py` (`_block_external_network`, autouse) + `test_network_guard.py` | novo |
-| Latência do modo `slow` do mock sem depender de relógio real apertado | `test_mock_upstream.py::test_slow_respects_latency`, `test_slow_waits_requested_latency` | novo |
+| Latência do modo `slow` do mock sem depender de relógio real apertado | `test_mock_upstream.py::test_slow_respects_latency`, `test_slow_really_waits_with_generous_tolerance` | novo |
 
 ## Observabilidade e demais
 

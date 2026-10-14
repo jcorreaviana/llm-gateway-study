@@ -10,6 +10,7 @@ falhas. Não usa modelo real, rede externa, credenciais nem disco. Só escuta em
 import asyncio
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -89,7 +90,8 @@ def _failure(status: int, chaos: ChaosConfig):
     return _error(status, "Request failed (mock).", "invalid_request_error")
 
 
-def create_app() -> FastAPI:
+def create_app(sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> FastAPI:
+    """`sleep` é injetável para os testes medirem o pedido de espera sem depender do relógio."""
     app = FastAPI(title="mock-upstream", docs_url=None, redoc_url=None)
     state = _State()
 
@@ -152,7 +154,7 @@ def create_app() -> FastAPI:
             resp = _failure(chaos.error_status, chaos)
         else:
             if chaos.mode == "slow":
-                await asyncio.sleep(chaos.latency_ms / 1000)  # fora do lock
+                await sleep(chaos.latency_ms / 1000)  # fora do lock
             last_user = next((m for m in reversed(req.messages) if m.role == "user"), None)
             prompt = _text_of((last_user or req.messages[-1]).content)
             reply = f"[mock] {prompt[:200]}"
