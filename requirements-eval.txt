@@ -1,0 +1,4 @@
+# Dependências OPCIONAIS da avaliação (extras `eval`). Fora do requirements.txt e do CI.
+# O modelo de embedding NÃO é baixado por este arquivo: veja evalkit/embedding.py (--allow-download).
+-r requirements.txt
+sentence-transformers
