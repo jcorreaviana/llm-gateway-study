@@ -92,6 +92,26 @@
     repositório idênticos antes e depois; nenhum processo órfão. **Nenhuma chamada à Anthropic.** Os 48 prompts NÃO
     foram rodados (ficam para quando os scorers existirem).
 
+- **Marco 10 (Fase 3: scorers, similaridade e estatística): concluído, commitado, SEM push** (aguarda confirmação).
+  `evalkit/scorers.py` (6 tipos de `check` + summarization composta), `embedding.py` (`Embedder` injetável, modelo
+  real opcional), `stats.py` (Wilson, percentis, bootstrap com semente, McNemar exato), `score.py`
+  (`python -m evalkit.score --run-id <id> [--review-sample] [--no-embedding | --allow-download]`),
+  `requirements-eval.txt`. Testes: 514 passando + 8 de integração (1 novo, o modelo real); cobertura 96,0%; ruff
+  limpo; `check_secrets.py` limpo (arquivos e `--history`). 4 quebras intencionais (`numeric` e `label_in`) todas
+  detectadas. **Nenhuma chamada à Anthropic.**
+  - **Execução completa:** run `m10-full`, 48 prompts por provedor, 0 erros nos dois (Qwen p50 212 ms, Llama 230 ms).
+    Resultado (aprovação, com embedding): Qwen 88% (IC 75-94%), Llama 65% (IC 50-77%). Pareado: dif. média de score
+    0,15 (IC95 0,06-0,26), McNemar 12 x 1, p=0,0034 -> diferença detectada a favor do Qwen no conjunto de 48;
+    **por categoria nada é conclusivo** (8 pares cada). Nenhum prompt defeituoso: os 5 em que os dois reprovam
+    (extraction-06, instruction-08, reasoning-03/05/08) são erros reais dos modelos (conferido à mão). `reasoning` é a
+    categoria mais fraca (Qwen 50%, Llama 38%), em parte porque o enunciado proíbe explicar (sem cadeia de raciocínio).
+  - A revisão humana de amostra achou um defeito do scorer (frase de abertura contada como passo na summarization),
+    corrigido e coberto por teste antes dos commits. O dataset NÃO foi alterado (hash `c64fa1474d38`).
+  - O modelo de embedding (`paraphrase-multilingual-MiniLM-L12-v2`, 458 MB) JÁ estava no cache local do Hugging Face
+    (desde 10/08/2026); nada foi baixado agora. Só o `pip install -r requirements-eval.txt` instalou
+    `sentence-transformers` e `torch` na `.venv`. A `Qwen2.5-0.5B-Instruct` no mesmo cache (954 MB) é anterior e
+    não tem relação com este projeto.
+
 ## Decisões
 - **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
   `--force` volta a ser proibido (a autorização de 14/10/2026 foi de uso único e já foi consumida).
@@ -276,6 +296,27 @@
   - Dois commits (`feat: add synthetic eval dataset and validator`, `feat: add eval runner`) foram feitos com 1 a 2
     erros de `E501` do ruff e corrigidos com `--amend` antes de qualquer push (local, sem `--force`).
 
+- Scorers e estatística (Marco 10):
+  - Contrato: cada scorer devolve `{score, passed, details}` e nunca levanta. Erro do runner (`error`, `status` != 200)
+    e resposta vazia viram `errored: true` (score 0), contados em `errors` e FORA da média, da aprovação e da latência.
+  - `format_clean` (em `details`) separa obediência de formato de correção: a resposta é limpa (cerca única, prosa
+    antes/depois, espaços) antes de pontuar, e o campo diz se a limpeza foi necessária. `passed` só olha o conteúdo.
+  - `json_schema`: campos pontuados = folhas de `expected` + campos `required` (recursivo); violação fora desses campos
+    (enum de opcional, campo extra com `additionalProperties: false`) entra como campo errado extra. Array no topo = 0.
+  - `exact`: padrão do schema (strip, casefold, pontuação final); acentos são opcionais (`ExactOptions`, não exposto no
+    spec porque o schema não aceita campos extras). `numeric`: último número; vírgula única é decimal, `1.234` é milhar,
+    `3.5` é decimal, `1,234.5` é formato inglês. `label_in`: palavra inteira sem acento/caixa, `_` e `-` valem como espaço.
+  - Summarization: 0,6 cobertura + 0,3 similaridade (cosseno com a `reference_answer`, mínimo 0) + 0,1 tamanho; sem
+    embedder renormaliza para cobertura + tamanho. Ponto-chave coberto se >= 60% dos seus termos de conteúdo aparecem
+    (sem acento/caixa, radical de 5 letras). Aprovado com score >= 0,7. Limite de tamanho lido do enunciado ("até N
+    frases", "N tópicos/passos"); resposta cortada por `max_tokens` (`finish_reason: length`) zera só o componente de tamanho.
+  - Estatística: IC de Wilson 95%; bootstrap percentil (10 000 reamostragens, semente 20260, `random.Random` local);
+    McNemar exato bilateral. O veredito só declara diferença se o IC95% exclui zero E o McNemar dá p < 0,05 E há >= 5
+    pares; senão "indicativo, não conclusivo", sem vencedor. Tokens/s = `completion_tokens` / latência ponta a ponta
+    (inclui gateway e processamento do prompt).
+  - Embedding: carrega só do cache local (`local_files_only=True`); baixar exige `--allow-download`. Dependência fora
+    do `requirements.txt` e do CI; os testes padrão usam embedder falso.
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (aleatório; `--cov` para cobertura; `-m integration` com Ollama real;
 `ruff check .` para lint). Detalhes no README.
@@ -290,8 +331,9 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. **Marco 10 (Fase 3):** scorers determinísticos (os seis tipos de `check`), similaridade por embedding e estatística.
+1. **Push do Marco 10** (só com confirmação do usuário).
 2. Marco 11: juiz local, calibração e amostra para revisão humana. Marco 12: relatório (markdown + CSV), README e push.
-3. Rodar os 48 prompts por provedor (`python -m evalkit.run --provider ollama_qwen --run-id <id>`, depois
-   `ollama_llama` com o mesmo `--run-id`) só depois que os scorers existirem.
+3. Os 48 prompts já foram coletados e pontuados no run `m10-full` (ignorado pelo git). Para repetir:
+   `python -m evalkit.run --provider ollama_qwen --run-id <id>`, depois `ollama_llama` com o mesmo `--run-id`, e
+   `python -m evalkit.score --run-id <id>`.
 4. **Fase 2 (adiada):** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).

@@ -143,8 +143,39 @@ preenchida pelo teste indicado.
 | Ollama real: 2 prompts por provedor (opcional, `skip` sem Ollama) | `test_eval_runner.py::test_real_ollama_runs_two_prompts_per_provider` | novo |
 | Pilha de processos compartilhada: env seguro, encerramento garantido (também em falha) | `test_demo.py::test_start_stack_*`, `test_integration.py::test_processes_are_terminated_*` | refatorado |
 
+## Scorers, similaridade e estatística, Fase 3 (Marco 10)
+
+| Requisito | Teste | Situação |
+|---|---|---|
+| `json_schema`: JSON em uma linha, indentado, com cerca, com prosa antes/depois; `format_clean` registra se precisou de limpeza | `test_scorers.py::test_json_schema_perfect_in_every_wrapping_*`, `test_extract_json_*` | novo |
+| `json_schema`: score = fração de campos corretos (ausente, tipo errado, valor errado, enum, `additionalProperties`, campo `required` sem `expected`, lista inteira) | `test_scorers.py::test_json_schema_*` | novo |
+| `exact`: normalização configurável (caixa, acentos, pontuação, espaços) | `test_scorers.py::test_exact_*` | novo |
+| `regex`: `re.search` com flags, cerca removida antes | `test_scorers.py::test_regex_search_with_flags` | novo |
+| `numeric`: último número, formatos PT-BR (`1.234,5`, `1,5`, `R$ 15,00`), unidade solta, tolerância | `test_scorers.py::test_parse_number_formats`, `test_numeric_*` | novo |
+| `label_in`: palavra inteira, dois rótulos diferentes = falha, mesmo rótulo repetido ok, acento e `_` | `test_scorers.py::test_label_in_*` | novo |
+| `constraints`: score = fração das regras; palavras inteiras; itens, linhas, frases, início/fim, minúsculas, sem quebra de linha | `test_scorers.py::test_constraints_*` | novo |
+| Erro, timeout, 4xx/5xx e resposta vazia: score 0 com `errored`, contados à parte | `test_scorers.py::test_runner_errors_and_empty_answers_*` | novo |
+| Entrada estranha (None, número, lista, dict, controle, emoji, 100 mil caracteres) nunca levanta; spec quebrado vira `scorer_error` | `test_scorers.py::test_never_raises_*`, `test_a_broken_spec_*` | novo |
+| Summarization: composta (cobertura, similaridade, tamanho), pesos documentados; limite lido do enunciado; truncamento por `max_tokens`; passos ignoram frase de abertura | `test_scorers.py::test_summarization_*`, `test_size_limit_parsing`, `test_key_point_coverage_*` | novo |
+| Sem embedder (ausente ou quebrado) a summarization usa só cobertura e tamanho e registra `embedding: unavailable` | `test_scorers.py::test_summarization_degrades_*` | novo |
+| Embedding: sem dependência ou sem modelo no cache vira `unavailable`; só baixa com `allow_download`; modelo padrão multilíngue | `test_embedding.py::test_missing_dependency_*`, `test_model_not_in_cache_*`, `test_download_only_when_*` | novo |
+| Modelo real: paráfrase mais próxima que texto sem relação (`@pytest.mark.integration`, `skip` sem modelo no cache) | `test_embedding.py::test_real_model_similarity_*` | novo |
+| `sentence-transformers` fora do `requirements.txt` e do CI; importar o CLI não o carrega | `test_eval_stats.py::test_sentence_transformers_is_not_a_default_dependency` | novo |
+| Wilson 95% com valores conhecidos (8/10, 5/10, 0/10, 10/10, 1/8, 50/100) | `test_eval_stats.py::test_wilson_*` | novo |
+| McNemar exato com valores conhecidos (0/0, 3/3, 0/5, 1/5, 0/10, 2/8), simétrico, teto 1 | `test_eval_stats.py::test_mcnemar_*` | novo |
+| Percentis por interpolação linear (p50, p95) | `test_eval_stats.py::test_percentile_*` | novo |
+| Bootstrap reprodutível com semente fixa, valor dourado, não mexe no `random` global, degenerado/vazio | `test_eval_stats.py::test_bootstrap_*` | novo |
+| Erros ficam fora da média, da aprovação e da latência, mas aparecem em `errors` | `test_eval_stats.py::test_group_stats_*` | novo |
+| Comparação pareada: IC inclui zero ou poucos pares ou McNemar não confirma = "indicativo, não conclusivo", sem vencedor; só declara com IC e McNemar de acordo; pares com erro ficam de fora | `test_eval_stats.py::test_paired_block_*`, `test_verdict_*` | novo |
+| Listas "os dois reprovam" e "só um reprova"; escolha do par; tokens/s | `test_eval_stats.py::test_both_fail_*`, `test_pick_pair`, `test_tokens_per_s` | novo |
+| CLI de ponta a ponta (sem rede): `scores.jsonl`, `summary.json`, determinístico com a semente, amostra de revisão de 12 (2 por categoria), run inexistente, `prompt_id` desconhecido | `test_eval_stats.py::test_cli_*`, `test_review_sample_*`, `test_unknown_prompt_id_*` | novo |
+| O código de pontuação não importa cliente de rede nem Anthropic | `test_eval_stats.py::test_scoring_code_never_imports_*` | novo |
+
+Quebras intencionais (um scorer de cada vez, restaurado depois): `numeric` pegando o primeiro número (3 testes falham),
+`numeric` sem vírgula decimal (3), `label_in` aceitando dois rótulos (3) e `label_in` sem palavra inteira (2).
+
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **97%** (96,6% medido no Marco 9) em `gateway/`,
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,0% medido no Marco 10) em `gateway/`,
 `mock_upstream/` e `evalkit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.
