@@ -120,8 +120,31 @@ preenchida pelo teste indicado.
 | Conteúdo em partes (`[{"type":"text"}]`) na estimativa, na tradução Anthropic e no mock | `test_decision_branches.py::test_estimate_tokens_*`, `test_anthropic_translation_*`, `test_mock_echoes_text_parts_*` | novo |
 | Falha periódica do mock com status 4xx comum (sem `Retry-After`) | `test_decision_branches.py::test_mock_non_5xx_non_429_failure_status_is_client_style_error` | novo |
 
+## Avaliação de qualidade, Fase 3 (Marco 9)
+
+| Requisito | Teste(s) | Situação |
+|---|---|---|
+| `config.eval.yaml` carrega no schema comum; chain só com os dois Ollama; `anthropic` desabilitado e fora da chain; sem limites artificiais (sem rate limit, breaker alto, timeout >= 120 s, warmup, contexto 3072) | `test_eval_config.py` | novo |
+| Dataset real: 48 prompts (6 categorias x 8), ids únicos, `temperature` 0, `check`/`reference_answer` por categoria, cabe no contexto local | `test_eval_dataset.py::test_real_dataset_*`, `test_cli_accepts_the_real_dataset` | novo |
+| Validador rejeita id duplicado (no arquivo e entre arquivos), campo faltando, `check` inválido (20 casos), prompt acima do contexto, padrão sensível (sem ecoar o valor), estrutura inválida, JSON inválido e contagem errada | `test_eval_dataset.py::test_rejects_*`, `test_sensitive_scan_*`, `test_expected_counts_*`, `test_cli_reports_*` | novo |
+| Estimativa de tokens do dataset idêntica à do gateway (sem importar o módulo do cliente da Anthropic) | `test_eval_dataset.py::test_token_estimate_matches_the_gateway` | novo |
+| Hash do dataset estável e independente do fim de linha | `test_eval_dataset.py::test_dataset_hash_is_stable_and_ignores_line_endings` | novo |
+| Dataset versionado; `eval/results/` e `eval/baseline/` ignorados | `test_eval_dataset.py::test_dataset_is_versioned_but_results_and_baseline_are_ignored` | novo |
+| Runner grava um resultado por prompt, em sequência, com provedor forçado, `temperature` 0 e o `max_tokens` do prompt | `test_eval_runner.py::test_collect_*` | novo |
+| Falha, timeout ou 5xx de um prompt vira resultado com `error` e não derruba o run | `test_eval_runner.py::test_one_failing_prompt_*`, `test_transport_errors_*`, `test_a_failing_prompt_does_not_break_execute`, `test_ask_*` | novo |
+| `--resume` pula os `prompt_id` gravados, tolera linha final truncada e não duplica | `test_eval_runner.py::test_resume_*`, `test_execute_resume_skips_what_is_recorded` | novo |
+| `meta.json` completo (data, modelo, versão do Ollama, hashes do dataset e do config, commit); dois provedores no mesmo run; hash divergente recusado | `test_eval_runner.py::test_execute_runs_the_whole_flow_*`, `test_two_providers_*`, `test_changed_dataset_or_config_*` | novo |
+| Config derivado: chain só com o provedor medido, outro modelo sem warm-up, budget e recorder dentro do run | `test_eval_runner.py::test_execute_uses_a_derived_config_*` | novo |
+| Filhos com `ENABLE_REAL_API=0` e `ANTHROPIC_API_KEY` vazia, bind em `127.0.0.1` | `test_eval_runner.py::test_child_processes_get_real_api_off_*`, `test_guard_environment_*` | novo |
+| Recusa rodar com `anthropic` na chain ou habilitado, ou com `ENABLE_REAL_API=1`, antes de tocar Ollama ou processos | `test_eval_runner.py::test_refuses_to_run_with_anthropic_*`, `test_derived_config_never_*`, `test_refuses_when_real_api_*` | novo |
+| Pré-checagens: Ollama no ar, modelo existente (só `GET`, nunca baixa), dataset válido, provedor válido, `run-id` seguro, config válido | `test_eval_runner.py::test_refuses_*` | novo |
+| `main`: erro claro (exit 2), Ctrl+C (exit 130), opções repassadas | `test_eval_runner.py::test_main_*` | novo |
+| O código de avaliação não importa nem referencia cliente da Anthropic (AST, texto e `sys.modules`) | `test_eval_runner.py::test_runner_does_not_import_*`, `test_importing_the_runner_*` | novo |
+| Ollama real: 2 prompts por provedor (opcional, `skip` sem Ollama) | `test_eval_runner.py::test_real_ollama_runs_two_prompts_per_provider` | novo |
+| Pilha de processos compartilhada: env seguro, encerramento garantido (também em falha) | `test_demo.py::test_start_stack_*`, `test_integration.py::test_processes_are_terminated_*` | refatorado |
+
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **97%** em `gateway/` e
-`mock_upstream/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **97%** (96,6% medido no Marco 9) em `gateway/`,
+`mock_upstream/` e `evalkit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.

@@ -384,7 +384,7 @@ ruff check .                    # lint
   no final. Sem o Ollama, eles fazem `skip` com mensagem clara.
 - Os testes da demo (`tests/test_demo.py`) rodam as cenas em memória, sem Ollama e sem processos.
 - O CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) roda `check_secrets.py --history`, `ruff` e
-  `pytest --cov` em Python 3.12 numa matriz `ubuntu-latest` + `windows-latest` (exercita os dois ramos do
+  `pytest --cov` em Python 3.12 numa matriz `ubuntu-24.04` + `windows-latest` (exercita os dois ramos do
   lock do budget, `fcntl` e `msvcrt`), sem integração e sem segredos.
 
 ## Limitações conhecidas

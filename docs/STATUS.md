@@ -65,6 +65,31 @@
   cobertura 97,33%, ruff limpo. **CI do novo HEAD (`6ccc8ed`): verde em ubuntu-latest e windows-latest.**
   Backup local e refs do filter-branch removidos.
 
+- **Marco 9 (Fase 3: CI, dataset e runner): concluído e commitado** (6 commits locais; push aguardando confirmação,
+  exceto o de CI, já publicado).
+  - **CI atualizado e verde:** `ubuntu-24.04` fixo (no lugar de `ubuntu-latest`), `actions/checkout@v7` e
+    `actions/setup-python@v7` (ambas `using: node24`, confirmado no `action.yml` das tags; releases mais recentes
+    v7.0.1 e v7.0.0). Run do push `2ba8187`: verde em ubuntu-24.04 e windows-latest, sem aviso de Node 20.
+    `windows-latest`: nenhum aviso de mudança no `actions/runner-images` (anúncios consultados em 14/10/2026), então
+    ficou como está. O anúncio do Ubuntu 26 diz que a migração do `ubuntu-latest` começa em 19/10/2026 e termina
+    em 19/11/2026 (não é um corte único em 19/10).
+  - **Dívida da lógica de processos: resolvida.** `scripts/_stack.py` (`start_stack`, `child_env`, `free_ports`,
+    `wait_health`, `stop`, `Stack`, `StackError`) é usado pela demo, pelos testes de integração e pelo runner.
+    Demo `--fast` rodada de novo (exit 0, sem processo órfão); 277 testes + 5 de integração seguiram verdes.
+  - `config.eval.yaml`: chain só `ollama_qwen` e `ollama_llama`, `anthropic` desabilitado e fora da chain,
+    `force_provider_enabled`, sem rate limit, breaker `failure_threshold` 1000, `timeout_s` 120, `warmup`,
+    `context_window` 3072, `record_content` true.
+  - Dataset sintético em PT-BR: `eval/prompts/*.jsonl`, 6 categorias x 8 = 48 prompts (versionado). Schema em
+    `evalkit/schema.py` e validador `python -m evalkit.validate_dataset`.
+  - Runner `python -m evalkit.run --provider <p> --run-id <id> [--resume] [--limit N]`, um provedor por vez, em
+    sequência, provedor forçado, `temperature` 0; saída em `eval/results/<run_id>/` (ignorado).
+  - Testes: 373 passando + 7 de integração (2 novos, parametrizados, do runner); cobertura 96,6% (agora inclui
+    `evalkit/`); ruff limpo.
+  - **Smoke real (`--limit 3`, run `smoke-m9`, Ollama 0.40.3):** Qwen 3 ok / 0 erros / p50 68 ms; Llama 3 ok /
+    0 erros / p50 58 ms (modelos já carregados). `eval/results/` fora do `git status`; `data/` e `logs/` do
+    repositório idênticos antes e depois; nenhum processo órfão. **Nenhuma chamada à Anthropic.** Os 48 prompts NÃO
+    foram rodados (ficam para quando os scorers existirem).
+
 ## Decisões
 - **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
   `--force` volta a ser proibido (a autorização de 14/10/2026 foi de uso único e já foi consumida).
@@ -209,21 +234,62 @@
   - README: `curl.exe` com JSON direto em `-d` quebra no PowerShell 5.1 (espaços/aspas); o exemplo usa
     arquivo (`-d "@arquivo"`). `Activate.ps1` bloqueado por política não foi testado (só orientação).
 
+- **Fase 3 sem Anthropic (regra desta fase):** `ENABLE_REAL_API=0`, `ANTHROPIC_API_KEY` vazia nos filhos, o
+  provedor `anthropic` nunca entra na chain de avaliação (o runner recusa se entrar ou se estiver habilitado) e o
+  código de `evalkit/` não importa nem referencia cliente da Anthropic (testado por AST, texto e `sys.modules`).
+  Se um baseline do Claude virar útil, é uma fase separada, com autorização. Formato previsto, NÃO implementado:
+  `eval/baseline/<prompt_id>.json` (ignorado pelo git).
+- **O que a Fase 3 mede:** Qwen (qwen2.5:3b) contra Llama (llama3.2:3b), via gateway, com provedor forçado. NÃO
+  mede a perda em relação a um modelo de mercado; o relatório final deve dizer isso de forma explícita (a frase
+  também vai no `meta.json`, campo `scope`).
+
+- Avaliação (Marco 9):
+  - Referência de qualidade: `check` por regra (`json_schema`, `exact`, `regex`, `numeric`, `label_in`,
+    `constraints`) em todas as categorias, menos `summarization` (`reference_answer` manuscrita + 3 a 4
+    `key_points`). O dataset usa 5 dos 6 tipos (nenhum prompt usa `regex`; o tipo é aceito e validado).
+    O formato e a semântica pretendida de cada tipo estão no docstring de `evalkit/schema.py`; os scorers
+    (Marco 10) devem segui-lo. `json_schema` é um SUBCONJUNTO de JSON Schema (`type`, `properties`, `required`,
+    `enum`, `items`, `additionalProperties`) mais `expected` (valores esperados campo a campo): evita dependência
+    nova (`jsonschema`) e permite conferir o valor, não só a forma.
+  - `tool_use` descreve as funções no texto do prompt e pede UMA chamada `{"name":..., "arguments":{...}}`; o
+    gateway não ganhou suporte ao campo `tools`. Argumentos de redação livre (ex.: texto de um lembrete) ficam
+    fora do `expected`.
+  - Validador: prompt de no máximo 800 tokens estimados e entrada + `max_tokens` dentro do menor contexto da chain
+    (3072); padrões do `check_secrets.py` mais e-mail, CPF, CNPJ e telefone. A estimativa (chars/4) está em
+    `evalkit/tokens.py`, cópia da do gateway com teste de paridade: `gateway/providers.py` também define o cliente da
+    Anthropic e o `evalkit` não pode importá-lo.
+  - Runner: config derivado em `eval/results/<run_id>/gateway/<provider>/` com chain só do provedor medido e
+    `warmup` desligado no outro Ollama (o gateway aquecia os dois e alternaria modelos na VRAM); porta livre,
+    budget e recorder do gateway no diretório do run. Warm-up descartado (um prompt curto) antes da medição.
+    Latência medida no cliente (ponta a ponta, inclui o gateway). `status` 0 = sem resposta HTTP (timeout etc.).
+    Resultado também guarda `finish_reason` (para detectar truncamento por `max_tokens`) e `provider`.
+  - `--limit N` escolhe uma amostra que alterna as categorias (não os N primeiros); `--resume` pula todos os
+    `prompt_id` gravados, inclusive os com erro (não há retry automático), descarta uma última linha truncada e
+    recusa continuar se o hash do dataset ou do config mudou. Sem `--resume`, não sobrescreve um resultado existente.
+  - O runner recusa `ENABLE_REAL_API` ligada no ambiente do usuário e zera `ANTHROPIC_API_KEY` no próprio processo.
+    O mock sobe junto (a pilha compartilhada sempre sobe os dois), mas fica fora da chain.
+  - `.gitignore`: `*.jsonl` segue ignorado, com exceção explícita `!eval/prompts/*.jsonl`. O
+    `eval/prompts.example.jsonl` nunca existiu (só a exceção no `.gitignore`), que foi removida.
+  - Fim de linha: o dataset e o config são hasheados com CRLF normalizado para LF (o Git no Windows converte).
+  - Dois commits (`feat: add synthetic eval dataset and validator`, `feat: add eval runner`) foram feitos com 1 a 2
+    erros de `E501` do ruff e corrigidos com `--amend` antes de qualquer push (local, sem `--force`).
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (aleatório; `--cov` para cobertura; `-m integration` com Ollama real;
 `ruff check .` para lint). Detalhes no README.
 
 ## Dívidas conhecidas
-- A lógica de processos (subir/encerrar mock e gateway) está duplicada entre `scripts/demo.py` (`Stack`)
-  e `tests/test_integration.py`.
 - Bucket: `usage.total_tokens` pode deixar o TPM negativo.
 - Estado de cooldown, breaker, buckets e métricas só em memória; recorder e budget assumem um processo.
 - Estimativa de tokens aproximada (caracteres/4); sem streaming.
-- CI: avisos de Node 20 nas actions (`checkout@v4`, `setup-python@v5`) e mudança do `ubuntu-latest` para
-  Ubuntu 26 em 19/10/2026. **Tratar no início da Fase 2** (subir versões das actions; conferir o job Ubuntu 26).
+- CI: resolvida no Marco 9 (`ubuntu-24.04` fixo, actions v7 em Node 24). Quando for migrar para Ubuntu 26, trocar
+  o runner de propósito e rodar o CI.
+- Runner de avaliação sobe também o mock (inútil na Fase 3); inofensivo, mas é um processo a mais.
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. **Fase 2:** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
-2. **Fase 3:** avaliação de qualidade das respostas locais contra um baseline, usando os registros do
-   recorder (`logs/requests.jsonl`).
+1. **Marco 10 (Fase 3):** scorers determinísticos (os seis tipos de `check`), similaridade por embedding e estatística.
+2. Marco 11: juiz local, calibração e amostra para revisão humana. Marco 12: relatório (markdown + CSV), README e push.
+3. Rodar os 48 prompts por provedor (`python -m evalkit.run --provider ollama_qwen --run-id <id>`, depois
+   `ollama_llama` com o mesmo `--run-id`) só depois que os scorers existirem.
+4. **Fase 2 (adiada):** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
