@@ -33,7 +33,14 @@
   tentativa forçada no `anthropic` com `ENABLE_REAL_API=0` -> 503 `real_api_blocked`, budget
   inalterado (`used=0`) e breaker `closed`; `git check-ignore` confirma `logs/` e `data/`. Processos
   encerrados, `git status` limpo.
-- Marcos 6-8: pendentes.
+- **Marco 6 (consolidação da suíte): concluído e commitado** (sem push).
+  `docs/TEST_MATRIX.md` (requisito -> teste), `pytest-cov` (97%, `fail_under` 85), `pytest-randomly`,
+  `ruff`, bloqueio de rede (`tests/netguard.py`), canário de segredo ponta a ponta, 5 testes de
+  integração (`-m integration`, Ollama real + processos reais), CI em `.github/workflows/ci.yml`.
+  Suíte padrão: 253 passando + 5 de integração (também passando). 5 execuções aleatórias
+  (sementes 101/202/303/404/505): todas verdes. 6 quebras intencionais: todas detectadas.
+  `data/` e `logs/` do repo idênticos antes e depois (hash/mtime). **Nenhuma chamada real à Anthropic.**
+- Marcos 7-8: pendentes.
 
 ## Decisões
 - Python 3.12, venv em `.venv/`. Ollama com `qwen2.5:3b` e `llama3.2:3b` já instalados.
@@ -129,12 +136,37 @@
     `real_api_blocked` foi preciso ligar `enabled` e `force_provider_enabled` temporariamente no YAML
     (revertido; nada commitado).
   - Teste de tempo do mock (`test_slow_respects_latency`) falhou uma vez de forma intermitente
-    (margem de relógio no Windows) e passou na repetição; vale endurecer no Marco 6.
+    (margem de relógio no Windows); corrigido no Marco 6.
+
+- Suíte de testes (Marco 6):
+  - `test_slow_respects_latency` agora mede o PEDIDO de espera: `mock_upstream.create_app(sleep=...)`
+    aceita um sleep injetável. Sobrou um teste de relógio real só com limite inferior folgado (>= metade).
+  - Isolamento: `tests/conftest.py` (autouse) redireciona `PROJECT_ROOT` para `tmp_path`, limpa
+    `ENABLE_REAL_API`/`ANTHROPIC_API_KEY`, bloqueia rede externa e, em escopo de sessão, falha se algo
+    mudar em `data/` ou `logs/` do repo. A exceção do guard NÃO herda de `OSError` (o código sob teste
+    não a engole como `connection_error`) e as violações também falham o teste no fim. No Windows o
+    asyncio (Proactor) não passa por `socket.connect`, então o guard também cobre `getaddrinfo`,
+    `create_connection` e `sock_connect`.
+  - Pontos de entrada ganharam dois ganchos por ambiente, só para os testes de integração:
+    `MOCK_UPSTREAM_PORT` (mock) e `GATEWAY_CONFIG` (`app_factory` do gateway). Nada muda sem eles.
+  - Integração: um stack (mock + gateway) NOVO por teste. Com stack compartilhado, o cooldown de um
+    429 vazou para o teste seguinte (dependência de ordem); cooldown/breaker/budget são estado de processo.
+  - Ruff: `E,F,W,I,B`, linha 120, sem `E501` em `tests/`. `UP` ficou de fora (UP042 trocaria
+    `str, Enum` por `StrEnum`, mudando `str()`/format dos enums de motivos). Só 7 correções reais
+    (imports não usados/ordem); nada reformatado.
+  - Quebras intencionais (um teste falha em cada): trava `ENABLE_REAL_API` (4), budget sem incrementar
+    (30), máscara de segredo (5), cooldown removido (5) ou ignorando `Retry-After` (3), `force_provider_enabled`
+    ignorado (1). A quebra 1 revelou um teste fraco (forçar `anthropic` sem chave bloqueava pelo motivo
+    errado); reforçado com a chave presente.
+  - CI: não foi executado (só vale após o push do Marco 8); roda em Linux, onde o ramo `fcntl` do
+    budget e os testes de processo nunca rodaram. Pode exigir ajuste no primeiro run.
 
 ## Como rodar os testes
-`.venv\Scripts\python -m pytest`  (testes de integração com Ollama: `-m integration`)
+`.venv\Scripts\python -m pytest`  (aleatório; `--cov` para cobertura; `-m integration` com Ollama real;
+`ruff check .` para lint). Detalhes no README.
 
 ## Próximo passo exato
-Marco 6: suíte de testes completa (revisar lacunas, cenários ponta a ponta com o mock e o Ollama,
-endurecer testes sensíveis a tempo). Validação real única da Anthropic (1 chamada, `max_tokens` 20)
-só com autorização explícita do usuário.
+Marco 7: demo e README final (cenário de demonstração reproduzível, instruções de ponta a ponta).
+Marco 8: varredura completa (arquivos + histórico), `git status`, lista de arquivos, e só então o
+push (`git push -u origin main`, sem `--force`, com confirmação). Validação real única da Anthropic
+(1 chamada, `max_tokens` 20) só com autorização explícita do usuário.
