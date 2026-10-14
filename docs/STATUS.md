@@ -128,7 +128,8 @@
   ubuntu-24.04.** Job `test (ubuntu-24.04)`, passo "Testes com cobertura (sem integração, sem segredos)": falha só
   `tests/test_judge.py::test_execute_runs_every_judgment_and_records_meta` (linha 493), que compara
   `[p.name for p in run_dir.glob("*.jsonl")]` com `[llama, qwen]`; no Linux o `glob` não vem ordenado (veio qwen antes de
-  llama). É defeito do TESTE (falta `sorted`), não do código; no Windows a ordem coincidiu. NÃO corrigido ainda, a pedido.
+  llama). É defeito do TESTE (falta `sorted`), não do código; no Windows a ordem coincidiu. CORRIGIDO no Marco 12 (`sorted`; commit
+  `96dd228`); o CI do HEAD `0608afc` ficou verde nas duas plataformas.
   `evalkit/judge_prompts.py` (rubricas por `task_type`, prompts PT-BR, hash), `judge.py` (pontual + pareado com troca de
   ordem, parser tolerante, uma nova tentativa, `judge_error`, `--resume`), `judge_stats.py` (kappa, acurácia, Spearman,
   viés de posição) e `judge_report.py` (`judge_summary.json` + `judge_review.md`). Testes: 653 passando + 10 de integração
@@ -176,7 +177,7 @@
     decisão não foi tocado e o prompt não foi ajustado a partir de concordância. No smoke (v1, 20 respostas verificáveis)
     e na execução completa (v2) nenhum juiz chegou perto do critério.
 
-- **Marco 12 (Fase 3: relatório final, README e fechamento): concluído localmente, AGUARDA o push (o usuário ainda revisa o relatório).** Sem
+- **Marco 12 (Fase 3: relatório final, README e fechamento): concluído e publicado. Fase 3 concluída.** Push normal, sem `--force`, de `9ec2617` a `0608afc` (9 commits; autor só noreply, 0 trailers `Co-Authored-By`). **CI do HEAD `0608afc`: verde em ubuntu-24.04 e windows-latest** (todos os passos). Relatório publicado: https://github.com/jcorreaviana/llm-gateway-study/blob/main/reports/fase3-qwen-vs-llama.md Sem
   Anthropic; dataset intacto (`c64fa1474d38`); `eval/results/` fora do `git status`.
   - **Revisão humana:** 3 itens de `tool_use` acrescentados ao `judge_review.md` (semente 20260, 3 de 7 candidatos:
     `tool_use-04`, `-03`, `-01`; o Qwen-juiz reprovou respostas que o scorer aprovou, com motivos que se contradizem).
@@ -191,7 +192,7 @@
     `--gpu`). 9 seções, 6 avisos obrigatórios (constantes `W_*` testadas). Só agregados e ids: as linhas de `scores.jsonl` passam
     por `sanitize_score_row` (`details` vira só `format_clean`), do juiz só se leem números e rótulos (`judge_view`), e
     `find_leaks` recusa gravar se algum trecho de resposta ou motivo de juiz (>= 12 caracteres) aparecer na saída.
-  - **Testes:** 33 novos (`tests/test_report.py`) mais 3 de ordenação; suíte 689 passando + 10 de integração; cobertura 96,58%; ruff limpo;
+  - **Testes:** 33 novos (`tests/test_report.py`) mais 3 de ordenação; suíte 692 passando + 10 de integração; cobertura 96,56%; ruff limpo;
     `check_secrets.py` limpo (arquivos e `--history`); sem caminho absoluto em `reports/`. 3 quebras intencionais: aviso de
     escopo removido (1 teste falha), filtro `sanitize_score_row` aberto (2 falham; o teste ponta a ponta de canário NÃO
     detecta, porque o relatório não renderiza `details`), trava `find_leaks` desligada (2 falham).
@@ -207,6 +208,15 @@
   - **Redação da revisão humana:** a Seção 7 e a Seção 8 do relatório e o README dizem que há um único revisor, 16 itens, e que o
     revisor viu a pontuação do scorer (possível ancoragem): 16/16 é verificação de sanidade, não validação independente.
     Também suavizadas frases causais sem teste (`reasoning` "pode penalizar", efeito não medido; autopreferência).
+  - **Ajustes finais de divulgação (commit `docs: tighten phase 3 report disclosures`, pedidos na revisão do usuário):** removida a
+    frase de "conferência direta" dos itens (também do `human_verdicts.json`); Seção 8 diz que a coleta foi com alterações não
+    commitadas (reprodução exata pelo commit impossível; hashes do dataset e do config verificam essas duas partes); nova Seção 3.1
+    divulga a correção do scorer de summarization (bug de contagem da frase de abertura, scores pós-correção calculados em
+    2026-10-14T19:40:32Z; o git tem um único commit do scorer, então não prova a ordem dos eventos nem quantos scores mudaram);
+    Seção 7.2 virou uma frase (tabela juiz x humano removida); Seção 6.3 define viés de posição e inconsistência de ordem com
+    numerador e denominador (Llama-juiz: 38/48 nos dois, 39 empates = 38 por inconsistência + 1 em que as duas rodadas empataram);
+    abertura da Seção 7 diz "sorteio estratificado" (4 verificáveis por concordância, 4 por discordância). Geração duas vezes:
+    saída idêntica; nenhuma resposta bruta no relatório.
   - **Regra do CI:** o CI só conta como verde depois do push de verificação (um run verde nas duas plataformas, ubuntu-24.04 e
     windows-latest, no HEAD empurrado); testes locais no Windows não provam o Linux. Se o CI ficar vermelho: parar e mostrar o
     job, o passo e o trecho do log.
@@ -448,10 +458,8 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. Marco 12: aguarda a confirmação do push depois da revisão do relatório. Depois do push: acompanhar o CI pelo `gh` até ficar verde
-   nas duas plataformas.
-2. Os 48 prompts estão coletados e pontuados no run `m10-full` (ignorado pelo git). Para repetir e regerar o relatório, veja a
-   seção "Fase 3: avaliação" do README.
-3. **Fase 3b (depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts. **Variante de
-   `reasoning` com explicação liberada** e **mais prompts por categoria** para resultados conclusivos.
-4. **Fase 2 (adiada):** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
+1. **Fase 2 (próxima):** comparar o gateway com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
+2. **Fase 3b (opcional, depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts, para medir a perda
+   real. Também: variante de `reasoning` com explicação liberada e mais prompts por categoria para resultados conclusivos.
+3. Para repetir a avaliação e regerar o relatório, veja a seção "Fase 3: avaliação" do README (os dados do run `m10-full` são
+   locais e não versionados).
