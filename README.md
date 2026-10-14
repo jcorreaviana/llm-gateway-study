@@ -105,13 +105,14 @@ O `model` enviado pelo cliente é aceito mas substituído pelo `model` do proved
 | `gateway.force_provider_enabled` | Padrão `false`. Se `true`, vale o header `x-gateway-force-provider`. |
 | `chain` | Ordem de tentativa, por nome de provedor. |
 | `providers[]` | `name`, `type` (`mock`/`ollama`/`anthropic`), `base_url`, `model`, `timeout_s`, `context_window` (tokens), `enabled`. |
+| `budget` | `limit` (padrão 30) e `path` (padrão `data/budget.json`). |
+| `recorder` | `path` (padrão `logs/requests.jsonl`) e `record_content` (padrão `true`). |
 | `providers[].rate_limit`, `.breaker`, `.default_retry_after_s`, `.warmup` | Resiliência, opcionais (veja abaixo). |
 
 Validado com pydantic na inicialização: nome duplicado, nome inexistente ou repetido na
 `chain`, e campos desconhecidos (como `api_key`) falham com mensagem clara.
-Segredos nunca ficam no YAML. O provedor `anthropic` vem `enabled: false` e **está
-fail-closed neste estágio**: recusa qualquer chamada real (`real_api_blocked`), mesmo com
-`ENABLE_REAL_API=1` e chave. A liberação depende do budget (Marco 5).
+Segredos nunca ficam no YAML. O provedor `anthropic` vem `enabled: false` e é **fail-closed**
+(veja "Chamadas reais e budget"). `budget` e `recorder` também são seções do YAML.
 
 ### Roteamento e falhas
 
@@ -121,7 +122,8 @@ fail-closed neste estágio**: recusa qualquer chamada real (`real_api_blocked`),
 | 401 / 403 | `auth_error`: fallback e aviso no log (provedor mal configurado) |
 | 2xx sem JSON válido | `invalid_response`: fallback |
 | Provedor desabilitado | `disabled`: pulado |
-| Prompt não cabe em `context_window` | `context_too_large`: pulado. Estimativa **aproximada**: caracteres/4 |
+| Prompt não cabe em `context_window` | `context_too_large`: pulado. Estimativa **aproximada**: caracteres/4. Nos Ollama o valor fica abaixo do contexto carregado (4096), para sobrar espaço à resposta |
+| Anthropic bloqueada (flag, chave, budget, tamanho) | `real_api_blocked` / `budget_exhausted` / `input_too_large`: fallback, **sem** contar para o breaker |
 | Outro 4xx | Erro do cliente: devolvido como veio, **sem** fallback |
 | Todos falharam | 503 com `error.providers` = `{provedor: motivo}` |
 
@@ -154,7 +156,7 @@ sem limite; o `config.yaml` de exemplo deixa o `mock_market` com `rpm: 5` para a
 | Mecanismo | Comportamento | Motivo ao pular |
 |---|---|---|
 | Token bucket | Um balde de RPM e outro de TPM por provedor, com reabastecimento **contínuo**. TPM usa a estimativa chars/4 e, em sucesso, é corrigido para `usage.total_tokens` real. Um pedido maior que o balde passa uma vez, com o balde cheio. | `rate_limit_local` |
-| Circuit breaker | `closed` -> `open` após N falhas **consecutivas** (`server_error`, `timeout`, `connection_error`, `invalid_response`, `auth_error`); um sucesso zera. Após `cooldown_s`, `half_open` deixa passar até `half_open_max_calls` sondas concorrentes: sucesso fecha, falha reabre e reinicia o cooldown. `rate_limited`, `client_error`, `context_too_large`, `rate_limit_local` e `real_api_blocked` não contam. | `breaker_open` |
+| Circuit breaker | `closed` -> `open` após N falhas **consecutivas** (`server_error`, `timeout`, `connection_error`, `invalid_response`, `auth_error`); um sucesso zera. Após `cooldown_s`, `half_open` deixa passar até `half_open_max_calls` sondas concorrentes: sucesso fecha, falha reabre e reinicia o cooldown. `rate_limited`, `client_error`, `context_too_large`, `rate_limit_local`, `real_api_blocked`, `budget_exhausted` e `input_too_large` não contam. | `breaker_open` |
 | Cooldown | Um 429 marca o provedor indisponível por `Retry-After` (ou `default_retry_after_s`), sem chamá-lo. Não conta para o breaker. | `cooling_down` |
 
 Se todos estiverem indisponíveis, a resposta é 503 com `error.providers` e o header
@@ -172,9 +174,66 @@ confundida com falha (se falhar, só avisa no log; não passa pelo breaker).
 Somente leitura e sem segredos (nada de `base_url` ou chaves). Para cada provedor: `type`,
 `enabled`, `breaker` (`state`, `consecutive_failures`, `open_remaining_s`), `buckets`
 (`rpm`/`tpm` com `level` e `capacity`, ou `null` sem limite) e `cooldown_remaining_s`.
+No topo: `budget` (`used`, `limit`, `remaining`, mais `error` se o arquivo estiver inválido) e
+`real_api_enabled` (somente o booleano de `ENABLE_REAL_API=1`).
 
 ```bash
 curl localhost:8000/status
 ```
 
-*(As seções de métricas e demo serão adicionadas nos próximos marcos.)*
+## Chamadas reais e budget
+
+O `AnthropicProvider` só abre conexão se **todas** as condições forem verdadeiras:
+
+1. `ENABLE_REAL_API=1` (padrão `0` se ausente; o `.env` é carregado com python-dotenv);
+2. `ANTHROPIC_API_KEY` presente (lida do ambiente só no momento do uso);
+3. provedor com `enabled: true` no `config.yaml`;
+4. entrada estimada <= `real_api_max_input_tokens` (padrão 1000, estimativa chars/4);
+5. `budget.reserve()` com sucesso.
+
+Qualquer falha devolve um motivo tipado **sem abrir conexão**: `real_api_blocked`, `input_too_large`
+ou `budget_exhausted`, todos com fallback e sem tocar o breaker. As checagens baratas vêm antes da
+reserva, então um bloqueio não gasta orçamento. O host (`api.anthropic.com/v1/messages`) é fixo no
+código; o `model` vem do config (`claude-haiku-5-5`), nunca do request; `max_tokens` efetivo =
+`min(request, max_tokens_cap)` (padrão 50, e o cap vale se o request não informar). A mensagem
+`system` vira o campo `system`; a resposta é traduzida para o formato OpenAI.
+
+**Budget** (`data/budget.json`, fora do git): contador persistente com limite rígido (padrão 30).
+A reserva acontece **antes** de enviar e nunca é devolvida: falha, timeout e erro também contam, então
+um loop com erro não passa do limite. Lock de arquivo (`msvcrt` no Windows, `fcntl` no resto) e
+escrita atômica (`os.replace`) tornam seguro entre tarefas e processos. É fail-closed: arquivo
+corrompido, ilegível ou com valores inválidos conta como esgotado e **nunca** é reiniciado em
+silêncio. Não há reset automático; o manual é explícito e pede confirmação:
+
+```bash
+python scripts/reset_budget.py
+```
+
+A chave nunca aparece em logs, exceções, `/status`, `/metrics` nem no recorder (qualquer padrão
+`sk-...` e o valor da chave do ambiente são mascarados). Os testes usam só `httpx.MockTransport`.
+
+## Métricas (`GET /metrics`)
+
+Formato Prometheus, com um registry próprio por app. Labels de baixa cardinalidade (nunca
+`request_id`, prompt ou modelo livre).
+
+| Métrica | Labels | Significado |
+|---|---|---|
+| `gateway_requests_total` | `provider`, `status` | uma por requisição; `provider="none"` no 503 e nos 400 do gateway |
+| `gateway_fallback_total` | `from_provider`, `to_provider`, `reason` | cada provedor pulado/falho; `to_provider` é quem respondeu (`none` no 503) |
+| `gateway_latency_seconds` | `provider` | histograma, só de chamadas efetivamente feitas |
+| `gateway_breaker_state` | `provider` | 0 closed, 1 half_open, 2 open; calculado no scrape (reflete a transição por tempo) |
+| `gateway_real_api_calls_total` | — | chamadas reais (reservas do budget) |
+| `gateway_budget_remaining` | — | chamadas restantes |
+
+## Recorder (`logs/requests.jsonl`)
+
+Uma linha JSON por requisição (inclusive 503 e erros de cliente), insumo da Fase 3. O arquivo guarda
+prompts e respostas, por isso fica em `logs/` (ignorado pelo git). Campos: `request_id` (uuid4, o
+mesmo do header `x-gateway-request-id`), `timestamp` (UTC), `messages`, `temperature`, `max_tokens`,
+`provider` (quem respondeu ou `none`), `forced_provider`, `fallback_reason`, `status`, `latency_ms`,
+`usage` e `response` (texto). Com `record_content: false` só vão os metadados. Padrões de segredo são
+mascarados. Uma falha de gravação nunca derruba a requisição (só um aviso, sem conteúdo). Os logs de
+aplicação continuam sem prompt, resposta ou chave.
+
+*(A demo completa será adicionada nos próximos marcos.)*
