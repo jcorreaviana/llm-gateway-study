@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import gateway.config as gateway_config
+from tests.netguard import NetworkGuard
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GUARDED_DIRS = ("data", "logs")
@@ -28,6 +29,19 @@ def _isolate_project_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway_config, "PROJECT_ROOT", tmp_path)
     monkeypatch.delenv("ENABLE_REAL_API", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _block_external_network():
+    """Só loopback: um teste que tente falar com a internet (ou com a Anthropic) falha, mesmo que
+    o código sob teste engula a exceção."""
+    guard = NetworkGuard()
+    guard.install()
+    try:
+        yield guard
+    finally:
+        guard.uninstall()
+    assert not guard.violations, f"tentativa de conexão externa: {guard.violations}"
 
 
 @pytest.fixture(scope="session", autouse=True)
