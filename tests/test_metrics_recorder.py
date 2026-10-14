@@ -9,10 +9,13 @@ import httpx
 import pytest
 from prometheus_client.parser import text_string_to_metric_families
 
-from gateway.config import AppConfig
 from gateway.recorder import Recorder
 from tests.gw_helpers import (
-    BODY, MOCK_URL, anthropic_ok_json, fake_key, gateway, make_config, openai_ok, provider_cfg, read_jsonl,
+    BODY,
+    fake_key,
+    gateway,
+    make_config,
+    read_jsonl,
 )
 
 ROOT = Path(__file__).resolve().parent.parent

@@ -109,3 +109,19 @@ preenchida pelo teste indicado.
 | Config validada (duplicados, chain, campos desconhecidos, resiliência) | `test_gateway_config.py`, `test_resilience.py::test_invalid_resilience_config_fails_at_startup` | ok |
 | Mock upstream: modos, `fail_every_n`, reset, 422, stats | `test_mock_upstream.py` | ok |
 | Pontos de entrada reais (`python -m mock_upstream.server`, uvicorn do gateway) | `test_integration.py::test_real_processes_end_to_end` (opcional) | novo |
+
+## Ramos de decisão achados pela cobertura (Marco 6)
+
+| Requisito | Teste(s) | Situação |
+|---|---|---|
+| `Retry-After` em segundos, data HTTP (futura, passada, sem fuso) e lixo | `test_decision_branches.py::test_parse_retry_after_*` | novo |
+| Lock do budget ocupado (thread ou outro processo) = esgotado, sem gastar, e volta a funcionar | `test_decision_branches.py::test_budget_thread_lock_timeout_is_fail_closed`, `test_budget_file_lock_held_by_another_handle_is_fail_closed` | novo |
+| Lifespan real cria `budget.json` em zero e não toca em arquivo existente | `test_decision_branches.py::test_real_lifespan_*`, `test_lifespan_does_not_touch_existing_budget_file` | novo |
+| Conteúdo em partes (`[{"type":"text"}]`) na estimativa, na tradução Anthropic e no mock | `test_decision_branches.py::test_estimate_tokens_*`, `test_anthropic_translation_*`, `test_mock_echoes_text_parts_*` | novo |
+| Falha periódica do mock com status 4xx comum (sem `Retry-After`) | `test_decision_branches.py::test_mock_non_5xx_non_429_failure_status_is_client_style_error` | novo |
+
+## Cobertura
+
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **97%** em `gateway/` e
+`mock_upstream/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
+o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.
