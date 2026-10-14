@@ -499,7 +499,10 @@ def section_human(human: dict[str, Any] | None) -> list[str]:
         f"tarefas verificáveis e {len(summ)} de summarization, e mais {len(extra)} itens de `tool_use` "
         "escolhidos depois (respostas do Qwen que o scorer aprovou e o Qwen-juiz reprovou). Para cada item viu o "
         "enunciado, a resposta, o resultado do scorer e as notas dos juízes. Registro: " + human["statement"] + ".",
-        "", "### 7.1 Concordância humano x scorer", ""]
+        "", "**Como ler esta seção:** há um único revisor, a amostra é de " + str(len(core)) + " itens e o revisor "
+        "VIU a pontuação do scorer ao decidir (possível ancoragem). Por isso a concordância abaixo é uma verificação "
+        "de sanidade, e não uma validação independente do scorer.", "",
+        "### 7.1 Concordância humano x scorer (verificação de sanidade)", ""]
     rows = [["Todos os itens do sorteio", len(core), agree(core)],
             ["Verificáveis", len(verif), agree(verif)],
             ["Summarization", len(summ), agree(summ)]]
@@ -507,13 +510,12 @@ def section_human(human: dict[str, Any] | None) -> list[str]:
     out += [f"Os {len(extra)} itens extras de `tool_use` ({agree(extra)} de concordância) foram escolhidos por uma "
             "característica (o Qwen-juiz reprovou) e ficam FORA da tabela: seriam uma amostra enviesada.", "",
             f"**Ressalva de amostra pequena:** n={len(core)} no total ({len(verif)} verificáveis, {len(summ)} de "
-            f"summarization). Uma concordância de {agree(core)} com n assim não prova que o scorer está certo em "
-            "geral: o intervalo de confiança é largo, a concordância foi registrada como concordância com o "
-            "resultado do scorer, e o revisor "
+            f"summarization). Uma concordância de {agree(core)} com n assim não valida o scorer: o intervalo de "
+            "confiança é largo, o revisor decidiu vendo o resultado do scorer, e o revisor "
             f"registrou conferência direta de {len(human.get('checked_directly', []))} dos {len(items)} itens "
             "(itens " + ", ".join(str(n) for n in human.get("checked_directly", [])) + "). Os itens sorteados "
             "para ter discordância entre juiz e scorer estão sobrerrepresentados.", "",
-            "### 7.2 Juiz x humano (o veredito humano coincide com o do scorer em todos os itens)", ""]
+            "### 7.2 Juiz x humano (o veredito humano é o do scorer, não é independente)", ""]
     rows = []
     for j in judges:
         rows.append([short_name(j) + "-juiz", judge_match(verif, j), judge_match(summ, j), judge_match(core, j),
@@ -543,8 +545,8 @@ def section_limits(summary: dict[str, Any]) -> list[str]:
         "- A referência de qualidade são regras escritas à mão (e, na summarization, pontos-chave); regras podem "
         "errar para os dois lados (avisos 5 e 6). `reasoning` penaliza respostas sem explicação (aviso 3).",
         "- Latências de modelo quente em GPU, uma máquina, sem concorrência (aviso 4).",
-        "- O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras) e foi feita por uma só "
-        "pessoa.",
+        "- O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras), foi feita por uma só "
+        "pessoa que viu a pontuação do scorer, e é uma verificação de sanidade, não uma validação independente.",
         "- Sem causalidade testada: diferenças observadas não são atribuídas a nenhuma causa.", ""]
 
 

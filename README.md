@@ -420,7 +420,8 @@ Detalhes, métodos e avisos em [reports/fase3-qwen-vs-llama.md](reports/fase3-qw
 - Por categoria (8 prompts cada), nenhuma comparação é conclusiva: "indicativo, não conclusivo".
 - O juiz local (um modelo de 3B julgando outro) **não é confiável**: kappa de 0,17 e 0,23 contra os scorers
   determinísticos, abaixo do critério fixado antes da execução (kappa >= 0,6 e acurácia >= 80%).
-- Revisão humana de 16 itens (mais 3 extras): concordou com o scorer em todos, com ressalvas registradas no relatório.
+- Revisão humana de 16 itens (mais 3 extras), por um único revisor que viu a pontuação do scorer: concordou em todos,
+  o que vale como verificação de sanidade, não como validação independente (ressalvas no relatório).
 
 ### Limitações da avaliação
 

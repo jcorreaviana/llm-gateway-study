@@ -164,7 +164,9 @@ O prompt do juiz teve uma única alteração, da versão v1 para a v2, por um bu
 
 O revisor humano olhou 16 itens sorteados (semente 20260): 8 de tarefas verificáveis e 8 de summarization, e mais 3 itens de `tool_use` escolhidos depois (respostas do Qwen que o scorer aprovou e o Qwen-juiz reprovou). Para cada item viu o enunciado, a resposta, o resultado do scorer e as notas dos juízes. Registro: concordo com todos os 19 itens, ou seja, com a pontuação do scorer determinístico em cada um.
 
-### 7.1 Concordância humano x scorer
+**Como ler esta seção:** há um único revisor, a amostra é de 16 itens e o revisor VIU a pontuação do scorer ao decidir (possível ancoragem). Por isso a concordância abaixo é uma verificação de sanidade, e não uma validação independente do scorer.
+
+### 7.1 Concordância humano x scorer (verificação de sanidade)
 
 | Conjunto | n | Humano concorda com o scorer |
 |---|---|---|
@@ -174,9 +176,9 @@ O revisor humano olhou 16 itens sorteados (semente 20260): 8 de tarefas verific�
 
 Os 3 itens extras de `tool_use` (3/3 de concordância) foram escolhidos por uma característica (o Qwen-juiz reprovou) e ficam FORA da tabela: seriam uma amostra enviesada.
 
-**Ressalva de amostra pequena:** n=16 no total (8 verificáveis, 8 de summarization). Uma concordância de 16/16 com n assim não prova que o scorer está certo em geral: o intervalo de confiança é largo, a concordância foi registrada como concordância com o resultado do scorer, e o revisor registrou conferência direta de 6 dos 19 itens (itens 7, 9, 15, 17, 18, 19). Os itens sorteados para ter discordância entre juiz e scorer estão sobrerrepresentados.
+**Ressalva de amostra pequena:** n=16 no total (8 verificáveis, 8 de summarization). Uma concordância de 16/16 com n assim não valida o scorer: o intervalo de confiança é largo, o revisor decidiu vendo o resultado do scorer, e o revisor registrou conferência direta de 6 dos 19 itens (itens 7, 9, 15, 17, 18, 19). Os itens sorteados para ter discordância entre juiz e scorer estão sobrerrepresentados.
 
-### 7.2 Juiz x humano (o veredito humano coincide com o do scorer em todos os itens)
+### 7.2 Juiz x humano (o veredito humano é o do scorer, não é independente)
 
 | Juiz | Verificáveis | Summarization | Todos (n=16) | Extras de tool_use |
 |---|---|---|---|---|
@@ -198,7 +200,7 @@ Valores = itens em que a aprovação do juiz (nota geral >= 4) coincide com o ve
 - Uma execução por prompt, `temperature` 0, sem repetição: não mede a variação entre execuções.
 - A referência de qualidade são regras escritas à mão (e, na summarization, pontos-chave); regras podem errar para os dois lados (avisos 5 e 6). `reasoning` penaliza respostas sem explicação (aviso 3).
 - Latências de modelo quente em GPU, uma máquina, sem concorrência (aviso 4).
-- O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras) e foi feita por uma só pessoa.
+- O juiz local não é confiável; a revisão humana cobre 16 itens (mais 3 extras), foi feita por uma só pessoa que viu a pontuação do scorer, e é uma verificação de sanidade, não uma validação independente.
 - Sem causalidade testada: diferenças observadas não são atribuídas a nenhuma causa.
 
 ## 9. Próximos passos

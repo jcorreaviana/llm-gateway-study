@@ -289,6 +289,8 @@ def test_human_section_has_agreement_tables_and_caveats(results_root, tmp_path):
     assert "| Todos os itens do sorteio | 4 | 4/4 |" in sec
     assert "| Summarization | 2 | 2/2 |" in sec and "| Verificáveis | 2 | 2/2 |" in sec
     assert "FORA da tabela" in sec and "amostra pequena" in sec
+    assert "único revisor" in sec and "VIU a pontuação do scorer" in sec and "verificação de sanidade" in sec
+    assert "não uma validação independente" in sec
     assert "| Llama-juiz | 2/2 | 2/2 | 4/4 | 1/1 |" in sec
     assert "| Qwen-juiz | 0/2 | 0/2 | 0/4 | 0/1 |" in sec
     assert "Item(ns) 2 (`instruction-07`): motivo acidental no scorer" in sec
