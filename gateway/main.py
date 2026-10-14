@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from gateway.budget import Budget
 from gateway.config import HOST, AppConfig, load_config, resolve_path
+from gateway.metrics import CONTENT_TYPE, NO_PROVIDER, Metrics
 from gateway.providers import (
     AnthropicProvider,
     OllamaProvider,
@@ -92,7 +93,20 @@ def create_app(
     owns_client = client is None
     http = client or httpx.AsyncClient()
     budget = budget or Budget(resolve_path(config.budget.path), config.budget.limit)
-    router = Router(config, build_providers(config.providers, http, budget), now)
+    metrics = Metrics(
+        # `router` é definido logo abaixo; o scrape lê o estado do breaker (com transição por
+        # tempo) na hora.
+        breaker_states=lambda: {
+            n: g.breaker.snapshot()["state"] for n, g in router.guards.items()
+        },
+        budget_remaining=lambda: budget.status().remaining,
+    )
+    router = Router(
+        config,
+        build_providers(config.providers, http, budget, metrics.real_api_calls.inc),
+        now,
+        metrics,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -106,6 +120,7 @@ def create_app(
 
     app.state.router = router  # exposto para inspeção em testes
     app.state.budget = budget
+    app.state.metrics = metrics
 
     @app.get("/health")
     async def health():
@@ -127,17 +142,27 @@ def create_app(
             }
         }
 
+    @app.get("/metrics")
+    async def metrics_endpoint():
+        return Response(metrics.render(), headers={"content-type": CONTENT_TYPE})
+
     @app.post("/v1/chat/completions")
     async def chat(
         req: ChatRequest,
         x_gateway_force_provider: str | None = Header(default=None),
     ):
+        request_id = str(uuid.uuid4())
+
+        def done(resp: Response, provider: str, attempts: list[Attempt]) -> Response:
+            resp.headers["x-gateway-request-id"] = request_id
+            metrics.observe_request(provider, resp.status_code, [(n, r.value) for n, r in attempts])
+            return resp
+
         if req.stream:
-            return _error(
+            return done(_error(
                 400, "stream=true não é suportado por este gateway (streaming fora do escopo).",
                 "invalid_request_error",
-            )
-        request_id = uuid.uuid4().hex[:12]
+            ), NO_PROVIDER, [])
         # O header só vale se force_provider_enabled; caso contrário é ignorado.
         force = x_gateway_force_provider if config.gateway.force_provider_enabled else None
         payload = req.model_dump(exclude_none=True)
@@ -145,25 +170,29 @@ def create_app(
         try:
             result = await router.route(payload, request_id, force)
         except UnknownProvider as e:
-            return _error(400, f"provedor desconhecido: {e}", "invalid_request_error")
+            return done(
+                _error(400, f"provedor desconhecido: {e}", "invalid_request_error"), NO_PROVIDER, []
+            )
         except ClientRequestError as e:
             headers = {"x-gateway-provider": e.provider, **_fallback_header(e.fallbacks)}
-            return Response(
+            resp = Response(
                 e.failure.body, status_code=e.failure.status_code or 400,
                 media_type=e.failure.content_type, headers=headers,
             )
+            return done(resp, e.provider, e.fallbacks)
         except AllProvidersFailed as e:
             headers = _fallback_header(e.attempts)
             if e.retry_after_s is not None:  # inteiro, arredondado para cima
                 headers["Retry-After"] = str(max(1, math.ceil(e.retry_after_s)))
-            return _error(
+            resp = _error(
                 503, "Todos os provedores falharam.", "gateway_error",
                 headers=headers,
                 providers={n: r.value for n, r in e.attempts},
             )
+            return done(resp, NO_PROVIDER, e.attempts)
 
         headers = {"x-gateway-provider": result.provider, **_fallback_header(result.fallbacks)}
-        return JSONResponse(result.data, headers=headers)
+        return done(JSONResponse(result.data, headers=headers), result.provider, result.fallbacks)
 
     return app
 

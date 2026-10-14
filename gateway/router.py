@@ -7,7 +7,9 @@ from typing import Any
 
 from gateway.availability import Availability, ProviderGuard
 from gateway.config import AppConfig
+from gateway.metrics import Metrics
 from gateway.providers import (
+    NOT_CALLED,
     FailureReason,
     Provider,
     estimate_tokens,
@@ -52,8 +54,13 @@ class UnknownProvider(Exception):
 
 class Router:
     def __init__(
-        self, config: AppConfig, providers: dict[str, Provider], now: Clock = time.monotonic
+        self,
+        config: AppConfig,
+        providers: dict[str, Provider],
+        now: Clock = time.monotonic,
+        metrics: Metrics | None = None,
     ) -> None:
+        self.metrics = metrics
         self.config = config
         self.providers = providers
         self.guards = {p.name: ProviderGuard(p.cfg, now) for p in providers.values()}
@@ -104,6 +111,8 @@ class Router:
             except BaseException:
                 await guard.breaker.release(adm)  # cancelamento: devolve a vaga de sonda
                 raise
+            if self.metrics and not (isinstance(result, ProviderFailure) and result.reason in NOT_CALLED):
+                self.metrics.latency.labels(name).observe(result.latency_ms / 1000)
             cooldown = await guard.settle(adm, est, result)
             if isinstance(result, ProviderSuccess):
                 log.info(
