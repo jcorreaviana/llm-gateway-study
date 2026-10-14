@@ -12,7 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 HOST = "127.0.0.1"  # fixo de propósito: o gateway nunca fica exposto na rede
 DEFAULT_PORT = 8000
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+
+
+def resolve_path(path: Path | str) -> Path:
+    """Caminhos relativos do config valem a partir da raiz do projeto, não do cwd."""
+    p = Path(path)
+    return p if p.is_absolute() else PROJECT_ROOT / p
 
 
 class GatewaySettings(BaseModel):
@@ -45,6 +52,22 @@ class BreakerConfig(BaseModel):
     half_open_max_calls: int = Field(default=1, gt=0)
 
 
+class BudgetSettings(BaseModel):
+    """Orçamento rígido de chamadas reais. Sem reset automático."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=30, gt=0)
+    path: str = "data/budget.json"
+
+
+class RecorderSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = "logs/requests.jsonl"
+    record_content: bool = True  # false: só metadados (sem mensagens nem resposta)
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -59,6 +82,9 @@ class ProviderConfig(BaseModel):
     breaker: BreakerConfig = BreakerConfig()
     default_retry_after_s: float = Field(default=30.0, gt=0)  # 429 sem header Retry-After
     warmup: bool = False  # só Ollama: uma requisição mínima na inicialização
+    # Só type anthropic: tetos da chamada real.
+    real_api_max_input_tokens: int = Field(default=1000, gt=0)
+    max_tokens_cap: int = Field(default=50, gt=0)
 
     @model_validator(mode="after")
     def _base_url_required(self) -> "ProviderConfig":
@@ -74,6 +100,8 @@ class AppConfig(BaseModel):
 
     gateway: GatewaySettings = GatewaySettings()
     mock_upstream: MockUpstreamSettings = MockUpstreamSettings()
+    budget: BudgetSettings = BudgetSettings()
+    recorder: RecorderSettings = RecorderSettings()
     chain: list[str] = Field(min_length=1)
     providers: list[ProviderConfig] = Field(min_length=1)
 
