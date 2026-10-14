@@ -7,6 +7,9 @@ concordam com os scorers determinísticos e decide quanto confiar neles. Um juiz
 se alternam na VRAM): rode o comando duas vezes, uma para cada juiz.
 
 - Pontual: nota 1 a 5 por critério (rubrica por `task_type`) e `overall`, para cada resposta avaliável.
+- Pareado: as respostas dos dois provedores entram anônimas como A e B, em DUAS rodadas com a ordem trocada.
+  Cada rodada é gravada; a preferência final (só vale se as duas ordens concordarem) e o índice de viés de
+  posição são calculados em `evalkit.judge_report`.
 - A resposta julgada é DADO: vai entre delimitadores e o prompt de sistema manda ignorar instruções dentro dela.
 - O juiz recebe o enunciado, a resposta e, quando existirem, `reference_answer` e `key_points`. Nunca o
   `check` nem o resultado do scorer (`judge_prompts.judge_view` é o único filtro).
@@ -47,6 +50,7 @@ from evalkit.judge_prompts import (
     SCALE_MAX,
     SCALE_MIN,
     judge_view,
+    pairwise_messages,
     pointwise_messages,
     prompt_hash,
 )
@@ -66,8 +70,8 @@ from evalkit.run import (
     write_json_atomic,
 )
 from evalkit.schema import EvalPrompt
-from evalkit.score import RESULTS_ROOT, ScoreError, load_run
-from evalkit.scorers import as_text, classify_error
+from evalkit.score import RESULTS_ROOT, ScoreError, load_run, pick_pair
+from evalkit.scorers import as_text, classify_error, strip_accents
 from evalkit.validate_dataset import EVAL_CONFIG, PROMPTS_DIR, DatasetError, dataset_hash, load_dataset
 from gateway.config import load_config
 from scripts._stack import StackError, free_ports, start_stack
@@ -178,6 +182,32 @@ def parse_pointwise(text: str, criteria: Sequence[str]) -> dict[str, Any] | None
     return _recover_pointwise(text or "", criteria)
 
 
+_WINNER_WORDS = {"a": "A", "b": "B", "empate": "tie", "tie": "tie"}
+
+
+def normalize_winner(value: Any) -> str | None:
+    """"A" | "B" | "tie" (aceita "resposta A", "Empate.", "a"); qualquer outra coisa é None."""
+    if not isinstance(value, str):
+        return None
+    word = strip_accents(value).strip().strip(".!\"' ").casefold().removeprefix("resposta ").strip()
+    return _WINNER_WORDS.get(word)
+
+
+def parse_pairwise(text: str) -> dict[str, Any] | None:
+    """`{"winner": "A"|"B"|"empate", "reason": "..."}` -> `{"winner": "A"|"B"|"tie", "reason", "recovered"}`."""
+    for obj in json_objects(text):
+        if "winner" in obj:
+            winner = normalize_winner(obj.get("winner"))
+            if winner is None:
+                return None
+            return {"winner": winner, "reason": _short(obj.get("reason")), "recovered": False}
+    m = re.search(r'"winner"\s*:\s*"\s*(?:resposta\s+)?(A|B|empate|tie)\b', text or "", re.IGNORECASE)
+    if m:
+        r = re.search(r'"reason"\s*:\s*"([^"]*)', text)
+        return {"winner": normalize_winner(m.group(1)), "reason": _short(r.group(1)) if r else "", "recovered": True}
+    return None
+
+
 # --------------------------------------------------------------------------- chamada e nova tentativa
 async def post_chat(
     gw: httpx.AsyncClient, provider: str, messages: list[dict[str, str]], *,
@@ -243,7 +273,7 @@ async def run_judgment(chat: ChatFn, messages: list[dict[str, str]], parse: Pars
 @dataclass(frozen=True)
 class Item:
     key: str
-    kind: str  # "pointwise"
+    kind: str  # "pointwise" | "pairwise"
     prompt_id: str
     messages: list[dict[str, str]]
     meta: dict[str, Any] = field(default_factory=dict)
@@ -260,10 +290,17 @@ def response_index(results: dict[str, list[dict[str, Any]]]) -> dict[tuple[str, 
     return index
 
 
+def pairwise_orders(pair: tuple[str, str]) -> list[tuple[int, str, str]]:
+    """(rodada, quem é A, quem é B): a segunda rodada TROCA a ordem da primeira."""
+    return [(1, pair[0], pair[1]), (2, pair[1], pair[0])]
+
+
 def plan_items(prompts: dict[str, EvalPrompt], results: dict[str, list[dict[str, Any]]],
-               ids: Sequence[str] | None = None) -> list[Item]:
-    """Julgamentos a fazer, em ordem de prompt: um pontual por resposta avaliável."""
+               ids: Sequence[str] | None = None, pair: tuple[str, str] | None = None) -> list[Item]:
+    """Julgamentos a fazer, em ordem de prompt: um pontual por resposta avaliável e, se houver par de provedores
+    com as DUAS respostas avaliáveis, as duas rodadas do pareado (ordem trocada)."""
     index = response_index(results)
+    pair = pair if pair is not None else pick_pair(sorted(results))
     wanted = sorted(ids if ids is not None else prompts)
     items: list[Item] = []
     for pid in wanted:
@@ -278,11 +315,27 @@ def plan_items(prompts: dict[str, EvalPrompt], results: dict[str, list[dict[str,
                     messages=pointwise_messages(view, index[(provider, pid)]),
                     meta={"target": provider}, criteria=tuple(RUBRICS[prompt.task_type]),
                 ))
+        if pair and (pair[0], pid) in index and (pair[1], pid) in index:
+            for rnd, first, second in pairwise_orders(pair):
+                items.append(Item(
+                    key=f"pairwise|{pid}|{rnd}", kind="pairwise", prompt_id=pid,
+                    messages=pairwise_messages(view, index[(first, pid)], index[(second, pid)]),
+                    meta={"round": rnd, "a": first, "b": second},
+                ))
     return items
 
 
 def parser_for(item: Item) -> Parser:
+    if item.kind == "pairwise":
+        return parse_pairwise
     return lambda text: parse_pointwise(text, item.criteria)
+
+
+def winner_model(rec: dict[str, Any]) -> str | None:
+    """Quem ganhou a rodada: o provedor que estava em A ou em B, ou "tie". None se a rodada falhou."""
+    if rec.get("judge_error") or rec.get("winner") not in ("A", "B", "tie"):
+        return None
+    return {"A": rec.get("a"), "B": rec.get("b"), "tie": "tie"}[rec["winner"]]
 
 
 # --------------------------------------------------------------------------- coleta (retomável)
@@ -325,6 +378,8 @@ async def collect(chat: ChatFn, items: list[Item], judge: str, out_path: Path, *
             result = await run_judgment(chat, item.messages, parser_for(item))
             rec = {"key": item.key, "kind": item.kind, "prompt_id": item.prompt_id, "judge": judge,
                    **item.meta, **result}
+            if item.kind == "pairwise":
+                rec["winner_model"] = winner_model(rec)
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             f.flush()
             state = f"judge_error ({result['error_kind']})" if result["judge_error"] else describe(rec)
@@ -334,6 +389,8 @@ async def collect(chat: ChatFn, items: list[Item], judge: str, out_path: Path, *
 
 
 def describe(rec: dict[str, Any]) -> str:
+    if rec["kind"] == "pairwise":
+        return f"melhor: {rec['winner']} ({rec['winner_model']})"
     return f"nota {rec['overall']}"
 
 
@@ -428,7 +485,7 @@ def execute(opts: Options, out: Callable[[str], None] = print) -> dict[str, int]
     check_no_anthropic(cfg)
     check_provider(cfg, opts.judge)
     run_dir, prompts, results = load_inputs(opts)
-    items = plan_items(prompts, results, select_ids(prompts, opts.limit))
+    items = plan_items(prompts, results, select_ids(prompts, opts.limit), pick_pair(sorted(results)))
 
     async def preflight() -> str:
         async with make_ollama_client() as client:
