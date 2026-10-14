@@ -128,18 +128,22 @@ class Budget:
         """Escrita atômica: arquivo temporário no mesmo diretório + os.replace."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"used": used}, f)
-            f.flush()
-            os.fsync(f.fileno())
-        for attempt in range(20):  # no Windows o replace pode falhar se alguém estiver lendo
-            try:
-                os.replace(tmp, self.path)
-                return
-            except PermissionError:
-                if attempt == 19:
-                    raise
-                time.sleep(0.01)
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"used": used}, f)
+                f.flush()
+                os.fsync(f.fileno())
+            for attempt in range(20):  # no Windows o replace pode falhar se alguém estiver lendo
+                try:
+                    os.replace(tmp, self.path)
+                    return
+                except PermissionError:
+                    if attempt == 19:
+                        raise
+                    time.sleep(0.01)
+        except BaseException:
+            tmp.unlink(missing_ok=True)  # não deixa lixo; o arquivo original fica intacto
+            raise
 
     # --- API ---------------------------------------------------------------------------
     def ensure(self) -> None:
