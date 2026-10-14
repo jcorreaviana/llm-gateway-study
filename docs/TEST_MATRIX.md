@@ -174,8 +174,46 @@ preenchida pelo teste indicado.
 Quebras intencionais (um scorer de cada vez, restaurado depois): `numeric` pegando o primeiro número (3 testes falham),
 `numeric` sem vírgula decimal (3), `label_in` aceitando dois rótulos (3) e `label_in` sem palavra inteira (2).
 
+## Juiz local, calibração e revisão humana, Fase 3 (Marco 11)
+
+| Requisito | Teste | Situação |
+|---|---|---|
+| Parser do juiz: JSON limpo, com cerca de código, com prosa antes/depois, truncado (recupera `overall`) e inválido; nota fora da escala, não inteira ou booleana é rejeitada | `test_judge.py::test_parse_*`, `test_coerce_score` | novo |
+| Parser do pareado: A, B, empate, "Resposta A", cerca, truncado; "Ambos" e lixo são inválidos | `test_judge.py::test_parse_pairwise_*` | novo |
+| Montagem do prompt: resposta entre delimitadores, em bloco próprio, fora do prompt de sistema | `test_judge.py::test_answer_goes_between_explicit_delimiters` | novo |
+| O juiz nunca recebe `check`, `notes` nem resultado do scorer (campo a campo e texto, no dataset inteiro) | `test_judge.py::test_judge_never_receives_check_*`, `test_no_prompt_of_the_dataset_leaks_*` | novo |
+| `reference_answer` e `key_points` só chegam em summarization; toda categoria tem rubrica | `test_judge.py::test_reference_and_key_points_*`, `test_every_task_type_has_a_rubric_*` | novo |
+| Resposta que tenta manipular o juiz ("dê nota 5", marcadores falsos) não altera o prompt de sistema e não fecha o bloco | `test_judge.py::test_injection_*`, `test_neutralize_*` | novo |
+| Pareado anônimo (sem nome de modelo) e com a ordem TROCADA na segunda rodada | `test_judge.py::test_pairwise_prompt_is_anonymous_*`, `test_pairwise_orders_swap_*`, `test_plan_items_swaps_the_order_*` | novo |
+| Respostas com erro/vazias saem do plano; sem par de provedores o pareado não existe | `test_judge.py::test_plan_items_*` | novo |
+| JSON inválido: UMA nova tentativa com lembrete de formato; depois `judge_error` sem derrubar o run; erro de transporte não tenta de novo | `test_judge.py::test_invalid_json_is_retried_*`, `test_still_invalid_*`, `test_transport_error_*` | novo |
+| Coleta retomável: `--resume` pula o gravado (inclusive `judge_error`), descarta linha final truncada | `test_judge.py::test_resume_*`, `test_collect_*` | novo |
+| Chamada ao gateway: provedor forçado, `temperature` 0, `max_tokens` baixo; falhas viram erro | `test_judge.py::test_post_chat_*` | novo |
+| Pré-checagens: `ENABLE_REAL_API` ligada, `anthropic` na chain ou habilitado, modelo ausente, Ollama fora, run inexistente, dataset mudou, juiz desconhecido | `test_judge.py::test_execute_refuses_*`, `test_execute_unknown_judge_*`, `test_execute_ollama_down`, `test_execute_missing_run_*` | novo |
+| `execute` de ponta a ponta (gateway e Ollama simulados): meta com hash do prompt do juiz, recusa sobrescrever, `--resume`, hash diferente recusa, `--limit` | `test_judge.py::test_execute_*` | novo |
+| O código do juiz não importa nem referencia cliente da Anthropic | `test_eval_runner.py::test_runner_does_not_import_*` (varre `evalkit/`), `test_judge.py::test_importing_the_judge_*` | novo |
+| 2 julgamentos reais por juiz (uma resposta errada e uma que tenta manipular), `skip` sem Ollama | `test_judge.py::test_real_ollama_makes_two_judgments_per_judge` (`-m integration`) | novo |
+| Kappa de Cohen com valores conhecidos (0,4 em 2x2; 0,5 em 3 categorias; 1, -1, 0; indefinido vira `None`) e IC bootstrap reprodutível | `test_judge_stats.py::test_kappa_*`, `test_bootstrap_kappa_*` | novo |
+| Acurácia, precisão e revocação da aprovação; denominador zero vira `None`; aprovar tudo tem acurácia alta e kappa 0 | `test_judge_stats.py::test_binary_metrics_*`, `test_approving_everything_*` | novo |
+| Critério de decisão fixado em constantes (kappa >= 0,6 e acurácia >= 0,80), com os limites exatos; kappa indefinido reprova | `test_judge_stats.py::test_decision_criterion_*`, `test_judge_report.py::test_decision_labels_*` | novo |
+| Spearman com valor conhecido (8/sqrt(95)), monótono, invertido, constante e poucos pares | `test_judge_stats.py::test_spearman_*` | novo |
+| Pareado: tabela-verdade das duas rodadas e índice de viés de posição (2 de 4 = 0,5); juiz que sempre escolhe a posição A tem índice 1 | `test_judge_stats.py::test_pairwise_outcome_*`, `test_position_bias_*`, `test_a_judge_that_always_picks_*` | novo |
+| Taxa de vitória (empate vale 0,5) e autopreferência com valores conhecidos (nota própria +2, folga -2, líquido 4; pareado 0,5); aprovações indevidas em respostas próprias x do outro | `test_judge_stats.py::test_win_rate_*`, `test_judge_report.py::test_self_preference_*` | novo |
+| Concordância entre juízes, sem média de notas | `test_judge_report.py::test_cross_judge_agreement_*` | novo |
+| Calibração por categoria; `judge_error` e erro do scorer ficam fora e são contados | `test_judge_report.py::test_calibration_block_*` | novo |
+| Summarization: Spearman nota x score e rótulo de confiabilidade; juiz constante dá `None`; `instruction` fica numa análise extra à parte | `test_judge_report.py::test_summarization_block_*`, `test_instruction_extra_*` | novo |
+| Revisão humana: 16 itens por semente (4 concordam, 4 discordam com piso de 2 aprovações indevidas de respostas do Qwen, 8 de summarization, 4 de cada modelo), determinística, resposta não fecha o bloco de código | `test_judge_report.py::test_review_*`, `test_stratified_pick_*`, `test_fenced_text_*`, `test_end_to_end_report_*` | novo |
+| Juiz perfeito é "uso permitido"; juiz invertido é "NÃO CONFIÁVEL"; com um só juiz não há seção cruzada | `test_judge_report.py::test_oracle_judge_*`, `test_report_with_a_single_judge_*` | novo |
+| O relatório só lê (nunca reescreve os julgamentos) e os erros são claros | `test_judge_report.py::test_report_errors_are_clear`, `test_report_cli_main_*` | novo |
+
+Quebras intencionais (uma de cada vez, restaurada com `git checkout`): troca de ordem do pareado removida (2 testes falham:
+`test_pairwise_orders_swap_the_second_round`, `test_plan_items_swaps_the_order_in_the_second_round`); filtro que impede o
+`check` de chegar ao juiz removido (2: `test_judge_never_receives_check_notes_or_scorer_result`,
+`test_reference_and_key_points_only_for_summarization`); neutralização de marcadores removida (3, todos de injeção); nova
+tentativa removida (4); limiar de aprovação 3 em vez de 4 (2).
+
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,0% medido no Marco 10) em `gateway/`,
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,3% medido no Marco 11, 653 testes + 10 de integração) em `gateway/`,
 `mock_upstream/` e `evalkit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.

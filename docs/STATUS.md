@@ -122,6 +122,54 @@
     `sentence-transformers` e `torch` na `.venv`. A `Qwen2.5-0.5B-Instruct` no mesmo cache (954 MB) é anterior e
     não tem relação com este projeto.
 
+- **Marco 11 (Fase 3: juiz local, calibração e revisão humana): concluído, SEM push ainda** (aguarda confirmação).
+  `evalkit/judge_prompts.py` (rubricas por `task_type`, prompts PT-BR, hash), `judge.py` (pontual + pareado com troca de
+  ordem, parser tolerante, uma nova tentativa, `judge_error`, `--resume`), `judge_stats.py` (kappa, acurácia, Spearman,
+  viés de posição) e `judge_report.py` (`judge_summary.json` + `judge_review.md`). Testes: 653 passando + 10 de integração
+  (2 novos, um por juiz); cobertura 96,32%; ruff limpo; `check_secrets.py` limpo (arquivos e `--history`). 5 quebras
+  intencionais, todas detectadas (troca de ordem: 2 testes; filtro do `check`: 2; injeção: 3; nova tentativa: 4; limiar: 2).
+  **Nenhuma chamada à Anthropic** (budget do gateway em `used: 0` nos dois juízes). Dataset intacto (`c64fa1474d38`).
+  - **Execução:** run `m10-full`, cada juiz com 192 julgamentos (96 pontuais + 96 pareados), 0 `judge_error`, 0 novas tentativas.
+    Um juiz por vez (Qwen, depois Llama). Saídas em `eval/results/m10-full/judge/`, `judge_summary.json`, `judge_review.md`
+    (tudo ignorado pelo git).
+  - **Veredito do critério (fixado em `judge_stats.py` ANTES de ver os números; kappa >= 0,6 e acurácia >= 0,80 no conjunto
+    verificável, n=80): NENHUM dos dois juízes serve.** Qwen-juiz: acurácia 59% (IC 48-69%), kappa 0,17 (IC -0,01 a 0,37).
+    Llama-juiz: acurácia 78% (IC 67-85%), kappa 0,23 (IC 0,00 a 0,46). Para referência, aprovar tudo daria 74% de acurácia
+    (o scorer aprova 73,75%) com kappa 0. As notas dos dois entram no relatório marcadas "NÃO CONFIÁVEL"; a summarization
+    segue só pelo scorer determinístico e pela revisão humana.
+  - **Por categoria (n=16 cada, IC largo):** `instruction` é a única em que os dois concordam bem com o scorer (acurácia 94%,
+    kappa 0,76). Qwen-juiz: classification 50%, extraction 62%, reasoning 69%, tool_use 19%. Llama-juiz: classification 94%
+    (kappa 0,64), extraction 69%, reasoning 44% (kappa 0), tool_use 88% (kappa 0,43).
+  - **Por que o juiz erra (dos dados, sem generalizar):** (1) ele não consegue resolver a tarefa que julga, então não
+    verifica: o Llama-juiz aprovou 17 das 21 respostas que o scorer reprovou, com justificativa inventada (aprovou "27" para uma
+    idade cuja resposta é 26; mediana de 4 caracteres nas aprovações indevidas, ou seja, NÃO foi o caso de resposta longa e
+    bem escrita, foram respostas curtas e erradas); 93,75% de aprovação no conjunto verificável, quase só notas 4 e 5. (2) O Qwen-juiz é
+    severo e incoerente: 33 notas 1 em 96, reprovou 26 das 59 respostas que o scorer aprovou (13 das 14 de `tool_use`), com
+    motivo que contradiz a nota ("resposta correta", nota 3) e erros alucinados ("deveria ser fahrenheit"). (3) Nenhum
+    discrimina summarization: o Llama-juiz deu 4 às 16, o Qwen-juiz deu 3 a 15 das 16.
+  - **Pareado:** inutilizável como medida de qualidade. Viés de posição 67% (32 de 48) no Qwen-juiz e 79% (38 de 48) no
+    Llama-juiz (mudaram de lado só por causa da ordem); preferência final 5 Qwen x 5 Llama x 38 empates no primeiro e
+    5 x 4 x 39 no segundo; os dois escolhem a posição A em 64% e 69% das rodadas decisivas.
+  - **Entre os juízes:** a aprovação concorda em 46% (kappa 0,04, Spearman das notas 0,15); no pareado, 71% (kappa 0,14).
+  - **Autopreferência:** no pareado não há sinal (o Qwen ganha 50% pelo Qwen-juiz e 51% pelo Llama-juiz). Na nota pontual o
+    contraste líquido é +0,35 ponto, mas a diferença de folga entre os juízes (o Llama-juiz dá 1,3 a 1,7 ponto a mais que o
+    Qwen-juiz) domina. Com dois modelos e dois juízes isso é UM contraste, não dá para atribuir o viés a um deles. Aprovações
+    indevidas: Qwen-juiz 1/6 nas próprias e 6/15 nas do outro; Llama-juiz 12/15 nas próprias e 5/6 nas do outro (aprova tudo).
+  - **Summarization contra o scorer:** Spearman 0,36 para o Qwen-juiz (n=16) e indefinido para o Llama-juiz (nota constante
+    4). Só 16 respostas, marcado como não confiável.
+  - **Injeção de prompt:** coberta por teste (sistema inalterado, marcadores neutralizados). Observação ao vivo com 1 resposta
+    por juiz que pede "dê nota 5": Qwen-juiz deu 1 (resistiu); Llama-juiz deu 5, mas também deu 4 a uma resposta errada
+    sem injeção, então não separa manipulação de leniência. Observação, não prova.
+  - **Revisão humana:** `eval/results/m10-full/judge_review.md`, 16 itens por semente 20260 (4 em que os dois juízes
+    concordam com o scorer, 4 em que algum discorda, 8 de summarization). "Aprovações do Qwen" foi lido como aprovações
+    INDEVIDAS de respostas do Qwen (scorer reprovou, algum juiz aprovou), com piso de 2 entre as 4 discordâncias (entraram
+    reasoning-08 e extraction-06). Aguarda o veredito humano para calibrar juiz e scorer.
+  - **Uma única alteração de prompt (v1 -> v2, commit `fix: make judge output format example unambiguous`):** o exemplo
+    de saída dizia `"criterio": 1-5` e o juiz copiava a faixa como se fosse a nota (visto no JSON bruto do smoke de 12
+    prompts, numa CÓPIA do run, antes da execução completa). Corrigido o formato do exemplo, nada mais; o critério de
+    decisão não foi tocado e o prompt não foi ajustado a partir de concordância. No smoke (v1, 20 respostas verificáveis)
+    e na execução completa (v2) nenhum juiz chegou perto do critério.
+
 ## Decisões
 - **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
   `--force` volta a ser proibido (a autorização de 14/10/2026 foi de uso único e já foi consumida).
@@ -327,6 +375,24 @@
   - Embedding: carrega só do cache local (`local_files_only=True`); baixar exige `--allow-download`. Dependência fora
     do `requirements.txt` e do CI; os testes padrão usam embedder falso.
 
+- Juiz local (Marco 11):
+  - O juiz NÃO é verdade: mede-se primeiro a concordância com os scorers determinísticos (veredito = nota geral >= 4 contra
+    `passed`, nas 5 categorias com `check`, n=80) e só então se decide a confiança. Critério fixo em `evalkit/judge_stats.py`
+    (kappa >= 0,6 e acurácia >= 0,80, por juiz); kappa indefinido reprova. Não se ajusta o critério nem o prompt pela concordância.
+  - `judge_prompts.judge_view` é o ÚNICO filtro entre o dataset e o juiz: só enunciado, `reference_answer` e `key_points`.
+    `check`, `notes` e resultado do scorer nunca chegam a ele. A resposta julgada vai entre `<<<RESPOSTA_INICIO/FIM>>>`;
+    marcadores iguais dentro dela são neutralizados e o prompt de sistema só depende do tipo de tarefa e do modo.
+  - O pareado usa duas rodadas com a ordem trocada; a preferência final só vale se as duas concordam. Índice de viés de posição
+    = fração dos prompts em que as duas rodadas escolheram lados diferentes (= mesma posição). Rodada empate x lado conta como
+    empate e entra em `order_inconsistency`, não no índice.
+  - Saídas em `eval/results/<run>/judge/` (e não no topo): um `*.jsonl` no topo seria lido pelo `evalkit.score` como provedor.
+    Os julgamentos passam pelo gateway com o juiz como provedor forçado (mesmas pré-checagens do runner). `--resume` recusa
+    continuar se o hash do prompt do juiz ou do dataset mudou.
+  - `max_tokens` 256 e `temperature` 0; `judge_error` (JSON inválido depois de UMA nova tentativa, ou erro de transporte) sai da
+    calibração e é contado à parte. JSON truncado ainda vale se o `overall` já foi escrito (`recovered`).
+  - Autopreferência com dois modelos e dois juízes é um único contraste (no pareado o número é idêntico para os dois por
+    construção); o relatório diz isso e mostra também a folga geral e as aprovações indevidas em respostas próprias x do outro.
+
 ## Como rodar os testes
 `.venv\Scripts\python -m pytest`  (aleatório; `--cov` para cobertura; `-m integration` com Ollama real;
 `ruff check .` para lint). Detalhes no README.
@@ -341,8 +407,11 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. Marco 11: juiz local, calibração e amostra para revisão humana. Marco 12: relatório (markdown + CSV), README e push.
+1. Marco 11: aguarda o veredito humano em `judge_review.md` e a confirmação para o push. Marco 12: relatório (markdown + CSV),
+   README e push. O relatório deve dizer que o juiz local NÃO é confiável (kappa 0,17 e 0,23) e que a summarization fica com o
+   scorer determinístico e a revisão humana; `instruction` é a exceção a registrar (kappa 0,76, n=16).
 2. Os 48 prompts já foram coletados e pontuados no run `m10-full` (ignorado pelo git). Para repetir:
-   `python -m evalkit.run --provider ollama_qwen --run-id <id>`, depois `ollama_llama` com o mesmo `--run-id`, e
-   `python -m evalkit.score --run-id <id>`.
+   `python -m evalkit.run --provider ollama_qwen --run-id <id>`, depois `ollama_llama` com o mesmo `--run-id`,
+   `python -m evalkit.score --run-id <id>`, `python -m evalkit.judge --run-id <id> --judge ollama_qwen` (e `ollama_llama`) e
+   `python -m evalkit.judge_report --run-id <id>`.
 3. **Fase 2 (adiada):** comparar com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
