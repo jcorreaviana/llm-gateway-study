@@ -12,7 +12,7 @@ import mock_upstream.server as mock_server
 from gateway.budget import Budget
 from gateway.config import AppConfig
 from gateway.main import create_app
-from scripts import demo
+from scripts import _stack, demo
 
 MOCK_URL = "http://127.0.0.1:9001"
 OLLAMA_URL = "http://localhost:11434"
@@ -150,12 +150,12 @@ def test_state_and_stats_lines():
 def test_child_env_disables_real_api_and_carries_no_key(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "valor-do-ambiente-pai")
     monkeypatch.setenv("ENABLE_REAL_API", "1")
-    env = demo.child_env(GATEWAY_CONFIG="x.yaml")
+    env = _stack.child_env(GATEWAY_CONFIG="x.yaml")
     assert env["ENABLE_REAL_API"] == "0"
     assert not env.get("ANTHROPIC_API_KEY")  # vazia: nunca o valor do pai
     assert "valor-do-ambiente-pai" not in env.values()
     assert env["GATEWAY_CONFIG"] == "x.yaml"
-    isolated = demo.child_env({"ANTHROPIC_API_KEY": "outra", "PATH": "p"})
+    isolated = _stack.child_env({"ANTHROPIC_API_KEY": "outra", "PATH": "p"})
     assert isolated["PATH"] == "p" and isolated["ANTHROPIC_API_KEY"] == ""
 
 
@@ -173,9 +173,9 @@ def test_start_stack_passes_the_safe_env_to_both_processes(tmp_path, monkeypatch
         def poll(self):
             return 1  # já encerrou: wait_health falha logo, sem rede
 
-    monkeypatch.setattr(demo.subprocess, "Popen", FakeProc)
+    monkeypatch.setattr(_stack.subprocess, "Popen", FakeProc)
     with pytest.raises(demo.DemoError, match="encerrou antes do /health"):
-        with demo.start_stack(tmp_path / "c.yaml", tmp_path, 8123, 9123):
+        with _stack.start_stack(tmp_path / "c.yaml", tmp_path, 8123, 9123):
             pass
     assert len(launched) == 2
     for _cmd, kw in launched:
@@ -267,7 +267,7 @@ def test_main_stops_the_stack_and_removes_the_temp_dir_on_ctrl_c(monkeypatch, ca
         events["workdir"] = workdir
         events["config_exists"] = config_path.exists()
         try:
-            yield demo.Stack("http://127.0.0.1:1", "http://127.0.0.1:2")
+            yield _stack.Stack("http://127.0.0.1:1", "http://127.0.0.1:2")
         finally:
             events["stopped"] = True
 

@@ -7,29 +7,20 @@ Anthropic: o provedor `anthropic` fica desabilitado e `ENABLE_REAL_API=0` no amb
 """
 
 import contextlib
-import os
 import socket
-import subprocess
-import sys
-import time
 from pathlib import Path
 
 import httpx
 import pytest
 import yaml
 
+from scripts._stack import Stack, free_ports, start_stack
+
 pytestmark = pytest.mark.integration
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 OLLAMA_URL = "http://localhost:11434"
 MODEL = "qwen2.5:3b"
 BODY = {"messages": [{"role": "user", "content": "Say hello in one word."}], "max_tokens": 8}
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def port_is_open(port: int) -> bool:
@@ -70,74 +61,17 @@ def write_config(tmp_path: Path, gateway_port: int, mock_port: int) -> Path:
     return path
 
 
-class Stack:
-    def __init__(self, mock_port: int, gateway_port: int, procs: list[subprocess.Popen]):
-        self.mock_port, self.gateway_port, self.procs = mock_port, gateway_port, procs
-        self.mock = f"http://127.0.0.1:{mock_port}"
-        self.gateway = f"http://127.0.0.1:{gateway_port}"
-
-    def chat(self, body=BODY, **headers) -> httpx.Response:
-        return httpx.post(f"{self.gateway}/v1/chat/completions", json=body, headers=headers, timeout=180)
-
-
-def wait_health(url: str, proc: subprocess.Popen, log: Path, timeout_s: float = 40) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            pytest.fail(f"processo encerrou antes do /health (código {proc.returncode}):\n"
-                        f"{log.read_text(encoding='utf-8', errors='replace')[-1500:]}")
-        try:
-            if httpx.get(f"{url}/health", timeout=1).status_code == 200:
-                return
-        except httpx.HTTPError:
-            time.sleep(0.2)
-    pytest.fail(f"{url}/health não respondeu em {timeout_s}s")
-
-
-def stop(proc: subprocess.Popen) -> None:
-    if proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=10)
+def chat(stack: Stack, body=BODY, **headers) -> httpx.Response:
+    return httpx.post(f"{stack.gateway_url}/v1/chat/completions", json=body, headers=headers, timeout=180)
 
 
 @contextlib.contextmanager
 def running_stack(tmp_path: Path):
-    """Mock e gateway como processos reais; garante o encerramento de ambos em qualquer caso."""
-    mock_port, gateway_port = free_port(), free_port()
-    while gateway_port == mock_port:
-        gateway_port = free_port()
+    """Mock e gateway como processos reais (scripts/_stack.py); encerra ambos em qualquer caso."""
+    gateway_port, mock_port = free_ports()
     config = write_config(tmp_path, gateway_port, mock_port)
-    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY",)}
-    env.update(
-        ENABLE_REAL_API="0",
-        ANTHROPIC_API_KEY="",  # vazio (não ausente): load_dotenv não sobrescreve variável existente
-        GATEWAY_CONFIG=str(config),
-        MOCK_UPSTREAM_PORT=str(mock_port),
-        PYTHONUNBUFFERED="1",
-    )
-    procs: list[subprocess.Popen] = []
-    logs = {n: tmp_path / f"{n}.log" for n in ("mock", "gateway")}
-    handles = [open(p, "wb") for p in logs.values()]
-    try:
-        procs.append(subprocess.Popen(
-            [sys.executable, "-m", "mock_upstream.server"],
-            cwd=REPO_ROOT, env=env, stdout=handles[0], stderr=subprocess.STDOUT))
-        procs.append(subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "gateway.main:app_factory", "--factory",
-             "--host", "127.0.0.1", "--port", str(gateway_port), "--log-level", "warning"],
-            cwd=REPO_ROOT, env=env, stdout=handles[1], stderr=subprocess.STDOUT))
-        wait_health(f"http://127.0.0.1:{mock_port}", procs[0], logs["mock"])
-        wait_health(f"http://127.0.0.1:{gateway_port}", procs[1], logs["gateway"])
-        yield Stack(mock_port, gateway_port, procs)
-    finally:
-        for p in procs:
-            stop(p)
-        for h in handles:
-            h.close()
+    with start_stack(config, tmp_path, gateway_port, mock_port) as s:
+        yield s
 
 
 @pytest.fixture
@@ -149,7 +83,7 @@ def stack(ollama, tmp_path):
 
 
 def test_real_ollama_qwen_through_gateway_forced(stack):
-    r = stack.chat(**{"x-gateway-force-provider": "ollama_qwen"})
+    r = chat(stack, **{"x-gateway-force-provider": "ollama_qwen"})
     assert r.status_code == 200, r.text
     assert r.headers["x-gateway-provider"] == "ollama_qwen"
     assert "x-gateway-fallback-reason" not in r.headers
@@ -161,29 +95,29 @@ def test_real_ollama_qwen_through_gateway_forced(stack):
 
 
 def test_real_fallback_mock_rate_limit_to_ollama(stack):
-    httpx.post(f"{stack.mock}/chaos", json={"mode": "rate_limit", "retry_after_seconds": 5}, timeout=5)
-    r = stack.chat()
+    httpx.post(f"{stack.mock_url}/chaos", json={"mode": "rate_limit", "retry_after_seconds": 5}, timeout=5)
+    r = chat(stack)
     assert r.status_code == 200, r.text
     assert r.headers["x-gateway-provider"] == "ollama_qwen"
     assert r.headers["x-gateway-fallback-reason"] == "mock_market:rate_limited"
     assert r.json()["choices"][0]["message"]["content"] is not None
-    stats = httpx.get(f"{stack.mock}/stats", timeout=5).json()
+    stats = httpx.get(f"{stack.mock_url}/stats", timeout=5).json()
     assert stats["received"] == 1 and stats["by_status"] == {"429": 1}
 
 
 def test_real_processes_end_to_end(stack):
     """Pontos de entrada reais: `python -m mock_upstream.server` e uvicorn do gateway."""
-    r = stack.chat()
+    r = chat(stack)
     assert r.status_code == 200
     assert r.headers["x-gateway-provider"] == "mock_market"
     assert r.json()["choices"][0]["message"]["content"].startswith("[mock]")
-    assert httpx.get(f"{stack.mock}/stats", timeout=5).json()["received"] == 1
-    status = httpx.get(f"{stack.gateway}/status", timeout=5).json()
+    assert httpx.get(f"{stack.mock_url}/stats", timeout=5).json()["received"] == 1
+    status = httpx.get(f"{stack.gateway_url}/status", timeout=5).json()
     assert status["real_api_enabled"] is False
     assert status["providers"]["mock_market"]["breaker"]["state"] == "closed"
-    assert "gateway_requests_total" in httpx.get(f"{stack.gateway}/metrics", timeout=5).text
+    assert "gateway_requests_total" in httpx.get(f"{stack.gateway_url}/metrics", timeout=5).text
     # a Anthropic continua fail-closed nos processos reais
-    blocked = stack.chat(**{"x-gateway-force-provider": "anthropic"})
+    blocked = chat(stack, **{"x-gateway-force-provider": "anthropic"})
     assert blocked.status_code == 503
     assert blocked.json()["error"]["providers"] == {"anthropic": "disabled"}
 

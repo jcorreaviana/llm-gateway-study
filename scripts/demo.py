@@ -17,13 +17,11 @@ import contextlib
 import itertools
 import os
 import re
-import socket
-import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Awaitable, Callable, Iterator
-from dataclasses import dataclass, field
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -36,13 +34,13 @@ import yaml  # noqa: E402
 from prometheus_client.parser import text_string_to_metric_families  # noqa: E402
 
 from gateway.config import AppConfig, load_config  # noqa: E402
+from scripts._stack import Stack, StackError, free_ports, start_stack  # noqa: E402
 
 DEMO_CONFIG = REPO_ROOT / "config.demo.yaml"
 MAX_TOKENS = 20  # respostas curtas (<= 30)
 RESPONSE_CHARS = 40
 FAST_COOLDOWN_S = 2.0
 MARGIN_S = 0.3  # folga ao esperar um prazo terminar
-HEALTH_TIMEOUT_S = 240  # o warm-up dos modelos locais roda antes do gateway aceitar conexões
 
 # Prompts curtos e genéricos (nenhum dado pessoal).
 PROMPTS = [
@@ -67,8 +65,7 @@ CHAOS_DEFAULTS: dict[str, Any] = {
 Sleep = Callable[[float], Awaitable[None]]
 
 
-class DemoError(Exception):
-    """Falha esperada (pré-requisito ausente etc.): mensagem clara, sem traceback."""
+DemoError = StackError  # falha esperada (pré-requisito ausente etc.): mensagem clara, sem traceback
 
 
 # --------------------------------------------------------------------------- formatação
@@ -223,16 +220,6 @@ def build_runtime_config(
     return raw
 
 
-def child_env(base: dict[str, str] | None = None, **extra: str) -> dict[str, str]:
-    """Ambiente dos processos filhos: API real desligada e nenhuma chave. `ANTHROPIC_API_KEY` vai
-    VAZIA (não ausente): com a variável ausente, o load_dotenv do gateway leria a chave de um `.env`
-    local; uma variável já definida nunca é sobrescrita por ele."""
-    env = dict(os.environ if base is None else base)
-    env.update(ENABLE_REAL_API="0", ANTHROPIC_API_KEY="", PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
-    env.update(extra)
-    return env
-
-
 # --------------------------------------------------------------------------- pré-requisito: Ollama
 def make_ollama_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=5)
@@ -262,70 +249,6 @@ async def check_ollama(client: httpx.AsyncClient, cfg: AppConfig) -> None:
                 f"modelo(s) ausente(s) no Ollama: {', '.join(missing)}.\n"
                 f"  A demo nunca baixa modelos sozinha. Rode:\n{pulls}"
             )
-
-
-# --------------------------------------------------------------------------- processos
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def stop(proc: subprocess.Popen) -> None:
-    if proc.poll() is None:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=10)
-
-
-def wait_health(url: str, proc: subprocess.Popen, log: Path, timeout_s: float) -> None:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            tail = log.read_text(encoding="utf-8", errors="replace")[-1500:]
-            raise DemoError(f"processo encerrou antes do /health (codigo {proc.returncode}):\n{tail}")
-        try:
-            if httpx.get(f"{url}/health", timeout=1).status_code == 200:
-                return
-        except httpx.HTTPError:
-            time.sleep(0.2)
-    raise DemoError(f"{url}/health nao respondeu em {timeout_s:.0f}s")
-
-
-@dataclass
-class Stack:
-    mock_url: str
-    gateway_url: str
-    procs: list[subprocess.Popen] = field(default_factory=list)
-
-
-@contextlib.contextmanager
-def start_stack(config_path: Path, workdir: Path, gateway_port: int, mock_port: int) -> Iterator[Stack]:
-    """Mock e gateway como processos reais, em 127.0.0.1; encerra ambos em qualquer caso (erro ou Ctrl+C)."""
-    env = child_env(GATEWAY_CONFIG=str(config_path), MOCK_UPSTREAM_PORT=str(mock_port))
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0  # Ctrl+C só no pai
-    logs = {n: workdir / f"{n}.log" for n in ("mock", "gateway")}
-    handles = [open(p, "wb") for p in logs.values()]
-    stack = Stack(f"http://127.0.0.1:{mock_port}", f"http://127.0.0.1:{gateway_port}")
-    try:
-        stack.procs.append(subprocess.Popen(
-            [sys.executable, "-m", "mock_upstream.server"],
-            cwd=REPO_ROOT, env=env, stdout=handles[0], stderr=subprocess.STDOUT, creationflags=flags))
-        stack.procs.append(subprocess.Popen(
-            [sys.executable, "-m", "uvicorn", "gateway.main:app_factory", "--factory",
-             "--host", "127.0.0.1", "--port", str(gateway_port), "--log-level", "warning"],
-            cwd=REPO_ROOT, env=env, stdout=handles[1], stderr=subprocess.STDOUT, creationflags=flags))
-        wait_health(stack.mock_url, stack.procs[0], logs["mock"], 40)
-        wait_health(stack.gateway_url, stack.procs[1], logs["gateway"], HEALTH_TIMEOUT_S)
-        yield stack
-    finally:
-        for p in stack.procs:
-            stop(p)
-        for h in handles:
-            h.close()
 
 
 # --------------------------------------------------------------------------- cenas
@@ -555,9 +478,7 @@ def main(argv: list[str] | None = None) -> int:
         print("Aviso: o warm-up carrega os modelos locais e a primeira resposta local pode demorar.")
         with tempfile.TemporaryDirectory(prefix="llm-gateway-demo-") as tmp:
             workdir = Path(tmp)
-            gateway_port, mock_port = free_port(), free_port()
-            while mock_port == gateway_port:
-                mock_port = free_port()
+            gateway_port, mock_port = free_ports()
             raw = build_runtime_config(DEMO_CONFIG, gateway_port=gateway_port, mock_port=mock_port,
                                        workdir=workdir, fast=args.fast)
             config_path = workdir / "config.demo.runtime.yaml"
