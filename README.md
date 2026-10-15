@@ -471,4 +471,5 @@ ruff check .                    # lint
   ([relatório](reports/fase3-qwen-vs-llama.md)).
 - **Fase 3b (planejada):** baseline de um modelo de mercado (Claude) nos mesmos prompts, para medir a perda real.
   Depende de autorização explícita.
-- **Fase 2 (planejada):** comparar com o LiteLLM Proxy.
+- **Fase 2 (em andamento):** comparar com o LiteLLM Proxy. Marco 13 (instalação isolada, config equivalente e smoke)
+  concluído; a verificação do comportamento vem no Marco 14. Veja [docs/LITELLM_COMPARISON.md](docs/LITELLM_COMPARISON.md).

@@ -221,6 +221,31 @@
     windows-latest, no HEAD empurrado); testes locais no Windows não provam o Linux. Se o CI ficar vermelho: parar e mostrar o
     job, o passo e o trecho do log.
 
+- **Marco 13 (Fase 2: LiteLLM Proxy isolado, config equivalente e smoke): concluído localmente, aguardando confirmação do push.**
+  **LiteLLM 1.103.1, lançado em 29/09/2026.** Lock com hashes do PyPI (116 pacotes, todos com mais de 14 dias na data do
+  lock), `pip-audit` sem vulnerabilidades conhecidas na data do lock. Os hashes vêm do PyPI, NÃO da tabela oficial de SHA-256
+  (que cobre só 1.78.0 a 1.82.6). **Os resultados desta comparação valem para esta versão e não devem ser generalizados para
+  outras, em especial a de março (1.83.0), que tem achados de segurança abertos.** Extensão futura possível: repetir a
+  comparação com uma versão mais nova. **Decisão:** a 1.83.0 (recomendada pelo aviso oficial) foi descartada por 11 avisos de
+  segurança no `pip-audit`, incluindo um bypass de autenticação por header `Host` (CVE-2026-49468). Documento: `docs/LITELLM_COMPARISON.md`.
+  - **Instalação** (`.venv-litellm/`, ignorado pelo git; `--require-hashes --only-binary=:all: --no-deps`, ambiente mínimo): `pip check`
+    limpo; `pip freeze` igual ao lock; único `.pth` = `pywin32.pth` (esperado). Superfície aceita: SDKs de nuvem, `polars`, `mcp`,
+    Redis e outros que não usamos (só conectam se configurados). `httpx2`/`httpcore2` verificados (`github.com/pydantic/httpx2`).
+  - **Trava de rede** (`litellm/netguard/sitecustomize.py`, audit hook + verificação em asyncio, proxy sumidouro, monitor de
+    conexões por PID): fail-closed. `LITELLM_TELEMETRY` NÃO existe nesta versão; usa-se `--telemetry False`. Limitação: extensões
+    nativas não passam pelo audit hook (o monitor externo é a segunda camada).
+  - **Achado:** o proxy tentou baixar o `cl100k_base` na inicialização porque os arquivos de cache embutidos no wheel têm CRLF e a
+    verificação de SHA-256 do `tiktoken` os rejeita; o conteúdo normalizado bate com o hash oficial. A trava bloqueou antes da
+    conexão. Contorno: cache temporário com LF conferido por hash (`scripts/_tiktoken_cache.py`). Observado só neste ambiente e
+    nesta versão; não testado em outros sistemas.
+  - **Config** `litellm/config.litellm.yaml` (cadeia `mock_market` -> `ollama_qwen` -> `ollama_llama`, `num_retries: 0`, sem
+    Anthropic, sem chave) com mapa de equivalência e itens `[VERIFICAR]` para o Marco 14. **Smoke** (`scripts/litellm_smoke.py`):
+    mock `normal` -> `mock_market`; `rate_limit` -> `ollama_qwen` (`x-litellm-attempted-fallbacks: 1`); `/stats` do mock 2 recebidas
+    (200:1, 429:1); 0 eventos bloqueados; 0 conexões fora do loopback; sem processo restante.
+  - **Testes:** 729 passando + 11 de integração (1 novo, o smoke); cobertura 96,56%; ruff limpo; `check_secrets.py` limpo
+    (arquivos e `--history`). 4 quebras intencionais do config (ordem dos fallbacks, provedor Anthropic, host externo,
+    `num_retries`) detectadas. CI sem `requirements-litellm*` (testado). **Nenhuma chamada à Anthropic.**
+
 ## Decisões
 - **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
   `--force` volta a ser proibido (a autorização de 14/10/2026 foi de uso único e já foi consumida).
@@ -458,7 +483,8 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. **Fase 2 (próxima):** comparar o gateway com o LiteLLM Proxy (mesmo cenário de fallback, rate limit e cooldown).
+1. **Fase 2, Marco 14 (próximo):** verificar por experimento os itens `[VERIFICAR]` do `litellm/config.litellm.yaml` (Retry-After,
+   breaker consecutivo ou em janela, janela de contexto, TPM, forçar provedor) e comparar com o gateway. Ver `docs/LITELLM_COMPARISON.md`.
 2. **Fase 3b (opcional, depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts, para medir a perda
    real. Também: variante de `reasoning` com explicação liberada e mais prompts por categoria para resultados conclusivos.
 3. Para repetir a avaliação e regerar o relatório, veja a seção "Fase 3: avaliação" do README (os dados do run `m10-full` são

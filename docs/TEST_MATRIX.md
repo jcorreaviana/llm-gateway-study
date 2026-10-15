@@ -239,8 +239,28 @@ Quebras intencionais (uma de cada vez, restaurada): aviso de escopo removido de 
 ponta de canário NÃO falha, porque o relatório não renderiza `details`: quem protege é o teste unitário do filtro);
 trava `find_leaks` desligada (2: `test_leak_guard_refuses_*`, `test_find_leaks_counts_only_long_enough_texts`).
 
+## Marco 13: LiteLLM Proxy isolado (Fase 2)
+
+`tests/test_litellm_config.py` (15), `tests/test_litellm_netguard.py` (15), `tests/test_tiktoken_cache.py` (7) e
+`tests/test_litellm_integration.py` (1, marker `integration`). Os três primeiros rodam sem o litellm instalado e sem rede.
+
+| Requisito | Teste | Situação |
+|---|---|---|
+| Config sem provedor Anthropic, só hosts `127.0.0.1`/`localhost`, sem chave (master key só como referência ao ambiente) | `test_no_anthropic_provider_anywhere_in_config_values`, `test_only_loopback_hosts`, `test_no_key_in_config` | novo |
+| Ordem dos fallbacks igual à `chain` do `config.demo.yaml`; rpm, `allowed_fails`, cooldown, timeouts e contexto iguais aos da demo | `test_fallback_order_matches_demo_chain`, `test_limits_match_demo_values` | novo |
+| Sem retry escondido; modo só-config (sem banco nem UI) | `test_hidden_retries_are_disabled`, `test_config_is_file_only_without_database_or_ui` | novo |
+| Mapa de equivalência cobre todos os campos da demo e marca como `[VERIFICAR]` o que a doc não deixa claro | `test_equivalence_map_covers_every_demo_field`, `test_map_flags_unverified_behaviour_instead_of_assuming`, `test_telemetry_note_points_to_the_cli_flag` | novo |
+| `.venv-litellm/` ignorado; litellm fora de `requirements*.txt` e do CI; pin exato; lock 100% com hashes, sem dado pessoal | `test_litellm_venv_is_gitignored`, `test_litellm_is_not_in_project_requirements_or_ci`, `test_input_pins_exact_version`, `test_lock_is_fully_hashed_and_documented` | novo |
+| Trava de rede: bloqueia e registra `connect`/DNS fora do loopback, libera loopback, cobre asyncio e a porta do sumidouro, vale em processo neto, não é `OSError` | `test_connect_to_external_ip_is_blocked_and_logged`, `test_name_resolution_*`, `test_connect_to_loopback_server_works`, `test_asyncio_*`, `test_connection_to_sink_port_*`, `test_pythonpath_reaches_grandchild_process`, `test_violation_is_not_an_oserror` | novo |
+| Cache do tiktoken: CRLF -> LF, hash conferido, aborta se não bater ou faltar arquivo; nome = SHA-1 da URL | `test_crlf_is_converted_and_hash_checked`, `test_hash_mismatch_aborts_and_writes_nothing`, `test_missing_required_file_aborts`, `test_cache_key_is_sha1_of_the_url_like_tiktoken` | novo |
+| Smoke real: `normal` -> `mock_market`, `rate_limit` -> `ollama_qwen`, 0 bloqueios, 0 conexões externas, sem processo restante | `test_litellm_proxy_smoke_with_fallback` (`-m integration`; `skip` sem litellm ou Ollama) | novo |
+
+Quebras intencionais (uma de cada vez, restaurada): ordem dos fallbacks trocada (1 teste falha), modelo Anthropic no lugar do
+Llama (3), host `192.0.2.1` no `api_base` (1), `num_retries: 2` em `router_settings` (1); remover o patch do asyncio da trava
+(1: `test_asyncio_connect_to_external_ip_is_blocked`, o que confirma que no Windows o IP literal não gera evento de auditoria).
+
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,5% medido no Marco 12, 686 testes + 10 de integração) em `gateway/`,
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,56% medido no Marco 13, 729 testes + 11 de integração) em `gateway/`,
 `mock_upstream/` e `evalkit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.
