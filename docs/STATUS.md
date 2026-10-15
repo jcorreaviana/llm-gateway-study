@@ -221,7 +221,11 @@
     windows-latest, no HEAD empurrado); testes locais no Windows não provam o Linux. Se o CI ficar vermelho: parar e mostrar o
     job, o passo e o trecho do log.
 
-- **Marco 13 (Fase 2: LiteLLM Proxy isolado, config equivalente e smoke): concluído localmente, aguardando confirmação do push.**
+- **Marco 13 (Fase 2: LiteLLM Proxy isolado, config equivalente e smoke): concluído e publicado.** Push normal, sem `--force`, de
+  `a4d707c` a `053d71f` (5 commits; autor só noreply, 0 trailers `Co-Authored-By`; varredura de nomes, caminhos e e-mails no histórico
+  sem ocorrência nova; `.venv-litellm/`, `eval/results/` e `.env` fora do `git ls-files`; `check_secrets.py` limpo em arquivos e
+  `--history`). **CI do HEAD `053d71f`: verde em ubuntu-24.04 e windows-latest** (todos os passos; os testes novos da trava de rede e
+  do config rodaram no Linux sem ajuste, o CI não instala `requirements-litellm*`).
   **LiteLLM 1.103.1, lançado em 29/09/2026.** Lock com hashes do PyPI (116 pacotes, todos com mais de 14 dias na data do
   lock), `pip-audit` sem vulnerabilidades conhecidas na data do lock. Os hashes vêm do PyPI, NÃO da tabela oficial de SHA-256
   (que cobre só 1.78.0 a 1.82.6). **Os resultados desta comparação valem para esta versão e não devem ser generalizados para
@@ -483,8 +487,9 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. **Fase 2, Marco 14 (próximo):** verificar por experimento os itens `[VERIFICAR]` do `litellm/config.litellm.yaml` (Retry-After,
-   breaker consecutivo ou em janela, janela de contexto, TPM, forçar provedor) e comparar com o gateway. Ver `docs/LITELLM_COMPARISON.md`.
+1. **Fase 2, Marco 14 (próximo):** comparação nos dois gateways. Rodar os mesmos cenários no gateway do projeto e no LiteLLM 1.103.1 e
+   verificar por experimento os itens `[VERIFICAR]` do `litellm/config.litellm.yaml` (Retry-After, breaker consecutivo ou em janela,
+   janela de contexto, TPM, forçar provedor). Ver `docs/LITELLM_COMPARISON.md`.
 2. **Fase 3b (opcional, depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts, para medir a perda
    real. Também: variante de `reasoning` com explicação liberada e mais prompts por categoria para resultados conclusivos.
 3. Para repetir a avaliação e regerar o relatório, veja a seção "Fase 3: avaliação" do README (os dados do run `m10-full` são
