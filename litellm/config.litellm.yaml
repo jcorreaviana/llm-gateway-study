@@ -1,0 +1,100 @@
+# Cenário da DEMO (config.demo.yaml) reproduzido no LiteLLM Proxy 1.103.1 (Marco 13, Fase 2).
+# Cadeia: mock_market -> ollama_qwen -> ollama_llama. Nenhum provedor Anthropic, nenhuma chave.
+# Modo só-config: sem banco (sem DATABASE_URL), sem UI. A master key vem do ambiente em tempo de
+# execução (LITELLM_MASTER_KEY, gerada aleatória a cada subida; nunca versionada). O proxy escuta só
+# em 127.0.0.1 (flag --host na linha de comando). As portas abaixo são as padrão; o smoke deriva uma
+# cópia temporária com portas livres.
+#
+# MAPA DE EQUIVALÊNCIA: campo do config.demo.yaml -> campo do LiteLLM.
+# "[VERIFICAR]" = a documentação não deixa claro; NÃO presumir. A verificação por experimento é o Marco 14.
+#
+#   gateway.port                      -> flag --port do `litellm` (não é campo do YAML)
+#   gateway.force_provider_enabled    -> sem equivalente direto. Para chamar um só provedor, o cliente pede
+#                                        `model: ollama_qwen` (o grupo), que não tem fallbacks. Não há header
+#                                        para forçar um deployment dentro de um grupo. [VERIFICAR]
+#   mock_upstream.port                -> n/a (o mock é externo ao proxy)
+#   budget.limit, budget.path         -> sem equivalente direto no modo só-config (orçamento exige banco)
+#   recorder.path, recorder.record_content -> sem equivalente direto (os callbacks de log ficam desligados)
+#   chain                             -> router_settings.fallbacks: [{mock_market: [ollama_qwen, ollama_llama]}]
+#                                        (o primeiro da chain é o grupo pedido; os demais são os fallbacks, na ordem)
+#   providers[].name                  -> model_list[].model_name (o grupo que o cliente pede)
+#   providers[].type mock / ollama    -> litellm_params.model: openai/<modelo> + api_base (OpenAI-compatível, /v1)
+#   providers[].type anthropic        -> sem equivalente: omitido de propósito (nunca configurado aqui)
+#   providers[].base_url              -> litellm_params.api_base
+#   providers[].model                 -> litellm_params.model (openai/<modelo>)
+#   providers[].timeout_s             -> litellm_params.timeout (segundos). É por tentativa? [VERIFICAR]
+#   providers[].context_window        -> model_info.max_input_tokens + router_settings.enable_pre_call_checks.
+#                                        O LiteLLM pula o deployment cujo contexto não cabe? Com que estimativa
+#                                        de tokens? [VERIFICAR]
+#   providers[].enabled               -> sem equivalente direto (basta não listar o deployment)
+#   providers[].rate_limit.rpm        -> litellm_params.rpm (+ routing_strategy usage-based-routing-v2). O limite
+#                                        é aplicado de fato, e com que comportamento no excedente? [VERIFICAR]
+#   providers[].rate_limit.tpm        -> litellm_params.tpm. A demo usa tpm: null. Há limite de TPM? [VERIFICAR]
+#   providers[].breaker.failure_threshold    -> router_settings.allowed_fails. Conta falhas CONSECUTIVAS ou numa
+#                                        JANELA (a documentação fala em "por minuto")? [VERIFICAR]
+#   providers[].breaker.cooldown_s    -> router_settings.cooldown_time
+#   providers[].breaker.half_open_max_calls  -> sem equivalente direto (sem sonda controlada documentada). [VERIFICAR]
+#   providers[].default_retry_after_s -> sem equivalente direto. O LiteLLM respeita o `Retry-After` de um 429
+#                                        e abre cooldown por ele, ou usa só o cooldown_time? [VERIFICAR]
+#   429 não conta para o breaker      -> no LiteLLM, um 429 entra no cooldown por outra regra? [VERIFICAR]
+#   providers[].warmup                -> sem equivalente
+#   providers[].real_api_max_input_tokens, providers[].max_tokens_cap -> sem equivalente (só existiam por causa
+#                                        do provedor Anthropic)
+#   retentativas escondidas           -> router_settings.num_retries: 0 e litellm_settings.num_retries: 0
+#                                        (retry escondido mascararia o fallback)
+#   x-gateway-provider / x-gateway-fallback-reason -> cabeçalhos de resposta do LiteLLM (x-litellm-*); quais
+#                                        indicam o modelo usado e se houve fallback? [VERIFICAR]
+#   503 com error.providers e Retry-After   -> formato do erro do LiteLLM quando tudo falha. [VERIFICAR]
+#   /status, /metrics                 -> endpoints do LiteLLM (health, métricas Prometheus são enterprise?). [VERIFICAR]
+#   telemetria                        -> flag --telemetry False do `litellm` (linha de comando, não é campo do YAML).
+#                                        LITELLM_TELEMETRY NÃO existe nesta versão. Nenhum callback externo está
+#                                        configurado. A garantia é a trava de rede do smoke, não esta config.
+
+model_list:
+  - model_name: mock_market
+    litellm_params:
+      model: openai/mock-market-1
+      api_base: http://127.0.0.1:9001/v1     # o smoke troca a porta
+      api_key: local-placeholder             # valor fictício: o cliente OpenAI exige um; o mock não valida
+      timeout: 10
+      rpm: 10                                # equivalente ao rate_limit.rpm da demo
+    model_info:
+      id: mock_market
+      max_input_tokens: 8192
+  - model_name: ollama_qwen
+    litellm_params:
+      model: openai/qwen2.5:3b
+      api_base: http://127.0.0.1:11434/v1
+      api_key: local-placeholder
+      timeout: 120
+    model_info:
+      id: ollama_qwen
+      max_input_tokens: 3072
+  - model_name: ollama_llama
+    litellm_params:
+      model: openai/llama3.2:3b
+      api_base: http://127.0.0.1:11434/v1
+      api_key: local-placeholder
+      timeout: 120
+    model_info:
+      id: ollama_llama
+      max_input_tokens: 3072
+
+router_settings:
+  num_retries: 0                  # sem retentativa escondida
+  allowed_fails: 3                # breaker.failure_threshold da demo (semântica: ver o mapa)
+  cooldown_time: 10               # breaker.cooldown_s da demo
+  enable_pre_call_checks: true    # janela de contexto (ver o mapa)
+  routing_strategy: usage-based-routing-v2   # necessário para o rpm valer (ver o mapa)
+  fallbacks:
+    - mock_market: [ollama_qwen, ollama_llama]
+
+litellm_settings:
+  num_retries: 0
+  drop_params: false
+  set_verbose: false
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY   # gerada em tempo de execução; nunca no repositório
+  disable_spend_logs: true                    # sem banco
+  disable_error_logs: true
