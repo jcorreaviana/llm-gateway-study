@@ -259,7 +259,7 @@ def test_unknown_prompt_id_is_counted_as_error_not_crash(tmp_path):
     assert rows[0]["errored"] is True and rows[0]["error_kind"] == "unknown_prompt"
 
 
-def test_embedding_unavailable_when_dependency_or_model_is_missing():
+def test_embedding_unavailable_when_dependency_or_model_is_missing(offline_hf):
     emb, status = load_embedder("modelo-que-nao-existe/xyz")  # só cache local: nunca baixa
     assert emb is None and status.startswith("unavailable")
 

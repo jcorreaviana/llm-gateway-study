@@ -9,6 +9,8 @@ import pytest
 from evalkit import embedding
 from evalkit.embedding import DEFAULT_MODEL, EmbeddingUnavailable, SentenceTransformerEmbedder, cosine, load_embedder
 
+pytestmark = pytest.mark.usefixtures("offline_hf")  # nada aqui deve tentar a rede do Hugging Face
+
 
 def fake_module(model_cls):
     mod = types.ModuleType("sentence_transformers")

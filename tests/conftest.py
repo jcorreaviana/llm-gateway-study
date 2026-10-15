@@ -1,6 +1,7 @@
 """Isolamento global: nenhum teste escreve em data/ ou logs/ do projeto, e nenhum herda
 ENABLE_REAL_API/ANTHROPIC_API_KEY do ambiente da máquina."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,18 @@ def _isolate_project_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway_config, "PROJECT_ROOT", tmp_path)
     monkeypatch.delenv("ENABLE_REAL_API", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+
+@pytest.fixture
+def offline_hf(monkeypatch):
+    """Modo offline do Hugging Face para os testes que carregam (ou simulam o carregamento do) modelo de embedding.
+    As variáveis sozinhas não bastam se `huggingface_hub` já foi importado (as constantes são lidas no import), então
+    a constante também é ajustada nesse caso."""
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    constants = sys.modules.get("huggingface_hub.constants")
+    if constants is not None:
+        monkeypatch.setattr(constants, "HF_HUB_OFFLINE", True, raising=False)
 
 
 @pytest.fixture(autouse=True)
