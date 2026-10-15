@@ -254,7 +254,7 @@
     (arquivos e `--history`). 4 quebras intencionais do config (ordem dos fallbacks, provedor Anthropic, host externo,
     `num_retries`) detectadas. CI sem `requirements-litellm*` (testado). **Nenhuma chamada à Anthropic.**
 
-- **Marco 14 (Fase 2: mesmo cenário nos dois gateways e comparação): concluído; push pendente (ver o fim desta entrada).**
+- **Marco 14 (Fase 2: mesmo cenário nos dois gateways e comparação): concluído e publicado.** Push normal, sem `--force`, de `215fc49` a `fb96966` (5 commits do Marco 14: runner, testes, documento, registro, ajustes pós-revisão; autor só noreply, 0 trailers `Co-Authored-By`). **CI do HEAD `fb96966`: verde em ubuntu-24.04 e windows-latest** (todos os passos); o CI do commit anterior `215fc49` também estava verde.
   Sem Anthropic; LiteLLM 1.103.1 sempre sob a trava de rede (66 subidas do proxy, somando comparação, cena 7b, diagnóstico da 8b e sondas, **0 eventos
   bloqueados, 0 conexões fora do loopback, nenhum processo restante**). `comparekit/` (`metrics.py`, `report.py`, `features.py`),
   `scripts/compare_gateways.py` (runner: gateway e mock reiniciados a cada cena e repetição), documento `docs/LITELLM_COMPARISON.md`
@@ -292,6 +292,9 @@
     (5) linha de Prometheus: "não verificado com o callback `prometheus`: o pacote `prometheus_client` não está no lock; o endpoint dá 404
     no modo só-config" (nada foi instalado nem investigado). Execuções extras: `m14-adj` (cena 7b) e `m14-diag8b` (diagnóstico, não entra nas
     tabelas); 66 subidas do proxy no total, 0 bloqueios.
+  - **Antes do push:** o commit local do registro (ainda não publicado) foi refeito UMA vez, sem `--force`, porque a frase sobre a busca de
+    dados pessoais listava o nome de usuário da máquina; a frase foi trocada por uma descrição genérica e nada com esse nome foi publicado
+    (conferido por `git log -S` no intervalo publicado). A linha do Marco 8 com o nome do titular da licença continua, por decisão do usuário.
   - **Intermitência observada, não explicada:** `tests/test_eval_stats.py::test_embedding_unavailable_when_dependency_or_model_is_missing`
     (não alterado) falhou 3 vezes seguidas no teardown com `getaddrinfo -> 'huggingface.co'` registrado pela trava de rede dos testes
     (a tentativa foi bloqueada antes de sair), e depois passou 5 vezes seguidas, inclusive duas suítes completas. Fora do pytest, nenhuma
