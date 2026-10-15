@@ -299,6 +299,10 @@
     (não alterado) falhou 3 vezes seguidas no teardown com `getaddrinfo -> 'huggingface.co'` registrado pela trava de rede dos testes
     (a tentativa foi bloqueada antes de sair), e depois passou 5 vezes seguidas, inclusive duas suítes completas. Fora do pytest, nenhuma
     resolução de nome foi vista. Causa não identificada.
+  - **Falha intermitente de `test_embedding_unavailable_when_dependency_or_model_is_missing`: causa não confirmada; mitigação aplicada
+    (modo offline do Hugging Face nos testes de embedding; fixture `offline_hf` em `tests/conftest.py`, commit `d5a5e4d`, CI verde nas duas
+    plataformas).** Antes e depois da mudança o teste passou 10 de 10 vezes, então a execução não discrimina a causa. **Se voltar, capturar o
+    traceback do `getaddrinfo` com o log da trava de rede**; não afrouxar a trava de rede dos testes.
   - **Busca por dados pessoais** (nome de usuário da máquina, pastas de perfil do Windows, e-mail pessoal, nome completo, fora do `LICENSE`):
     nenhuma ocorrência nos arquivos novos. Ocorrências antigas: o regex e o teste do scanner de e-mail, um teste do lock e a linha do
     Marco 8 acima, que traz o nome do titular da licença no próprio `STATUS.md` (já publicada; pendência para decisão do usuário).
