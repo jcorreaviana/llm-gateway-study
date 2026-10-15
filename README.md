@@ -429,6 +429,33 @@ Dataset pequeno e sintético; dois modelos de 3B; uma execução por prompt; o e
 explicar; a summarization recebe crédito parcial por pontos-chave compostos, então sua aprovação é um teto; latências
 de modelo quente em GPU. Os avisos completos estão na Seção 2 do relatório.
 
+## Fase 2: comparação com o LiteLLM Proxy
+
+As mesmas cenas (normal, limite local, 429 com `Retry-After`, falhas contínuas e intercaladas, recuperação, tudo
+indisponível, contexto, forçar provedor) rodam no gateway do projeto e no LiteLLM Proxy 1.103.1, com o mesmo mock e o
+mesmo Ollama, e comparam **comportamento**, não desempenho. O LiteLLM roda isolado em `.venv-litellm/`, no modo só-config,
+sempre sob uma trava de saída de rede, e nenhuma chamada vai à Anthropic. Os resultados valem para essa versão, num Windows,
+com o mock; o gateway do projeto é de estudo e o LiteLLM é um produto muito mais completo.
+
+O que apareceu: o gateway do projeto conta falhas consecutivas e espera o valor do `Retry-After`; o LiteLLM conta falhas
+numa janela de tempo e, quando abre o cooldown, também respeita o valor do header; o `allowed_fails: 3` do config ficou
+inativo por ser o padrão da biblioteca. Tabelas, achados e limitações em [docs/LITELLM_COMPARISON.md](docs/LITELLM_COMPARISON.md);
+dados agregados em [reports/fase2-gateway-vs-litellm.csv](reports/fase2-gateway-vs-litellm.csv).
+
+### Reproduzir
+
+```powershell
+python -m venv .venv-litellm
+.venv-litellm\Scripts\python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements-litellm.lock.txt
+.venv\Scripts\python scripts\litellm_smoke.py                                   # smoke (Marco 13)
+.venv\Scripts\python scripts\compare_gateways.py --run-id meu-run               # cenas x 3 repetições x gateways (~1 h)
+.venv\Scripts\python scripts\compare_gateways.py --run-id meu-run --probes      # sondas de recursos
+.venv\Scripts\python -m comparekit.report --run-id meu-run --doc docs\LITELLM_COMPARISON.md --csv reports\meu.csv
+```
+
+Precisa do Ollama com `qwen2.5:3b` e `llama3.2:3b`. Os resultados brutos ficam em `compare_results/` (ignorado pelo git).
+Os testes do gerador de tabelas e do CSV rodam sem o litellm, sem o Ollama e sem rede.
+
 ## Testes, cobertura e lint
 
 ```powershell
@@ -469,7 +496,7 @@ ruff check .                    # lint
 - **Fase 1 (este repositório):** gateway, mock, resiliência, observabilidade, custo e demo. Concluída.
 - **Fase 3 (concluída, local):** avaliação de Qwen contra Llama via gateway, sem Anthropic
   ([relatório](reports/fase3-qwen-vs-llama.md)).
-- **Fase 3b (planejada):** baseline de um modelo de mercado (Claude) nos mesmos prompts, para medir a perda real.
+- **Fase 3b (opcional):** baseline de um modelo de mercado (Claude) nos mesmos prompts, para medir a perda real.
   Depende de autorização explícita.
-- **Fase 2 (em andamento):** comparar com o LiteLLM Proxy. Marco 13 (instalação isolada, config equivalente e smoke)
-  concluído; a verificação do comportamento vem no Marco 14. Veja [docs/LITELLM_COMPARISON.md](docs/LITELLM_COMPARISON.md).
+- **Fase 2 (concluída):** comparação de comportamento com o LiteLLM Proxy 1.103.1
+  ([documento](docs/LITELLM_COMPARISON.md)). Repetir com uma versão mais nova do LiteLLM é uma extensão possível.

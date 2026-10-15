@@ -1,8 +1,8 @@
 # Fase 2: comparação com o LiteLLM Proxy
 
-Estado: **Marco 13 concluído** (instalação isolada, config equivalente e smoke). O Marco 14 verifica o
-comportamento por experimento. **Nenhuma chamada à Anthropic** em nenhum processo (`ANTHROPIC_API_KEY` vazia,
-nenhum provedor Anthropic no config).
+Estado: **Marco 14 concluído** (comportamento comparado por experimento nas mesmas cenas; seções 4 a 8).
+O Marco 13 fez a instalação isolada, o config equivalente e o smoke (seções 1 a 3). **Nenhuma chamada à Anthropic**
+em nenhum processo (`ANTHROPIC_API_KEY` vazia, nenhum provedor Anthropic no config).
 
 > **Os resultados desta comparação valem para a versão testada (LiteLLM 1.103.1, lançada em 29/09/2026) e não
 > devem ser generalizados para outras versões**, em especial a de março (1.83.0), que tem achados de segurança
@@ -78,10 +78,213 @@ contorno, nenhum.
 - Latências do smoke não são comparáveis (a primeira chamada ao Qwen carregou o modelo; a primeira chamada ao proxy
   inclui inicialização preguiçosa).
 
-## 4. O que NÃO foi verificado (Marco 14)
+## 4. Método da comparação (Marco 14)
 
-O mapa no topo de `litellm/config.litellm.yaml` marca com `[VERIFICAR]`: respeito ao `Retry-After` de um 429 e o
-cooldown resultante; se o breaker (`allowed_fails`) conta falhas consecutivas ou numa janela; se um 429 conta para
-ele; checagem de janela de contexto e com que estimativa; limite de TPM; se o `rpm` é aplicado de fato e o que acontece
-no excedente; ponto para forçar um provedor; sonda de recuperação (`half_open`); formato do erro quando tudo falha;
-endpoints de status e métricas; se `timeout` é por tentativa.
+- **O que é:** o mesmo mock, o mesmo Ollama (`qwen2.5:3b` e `llama3.2:3b`) e as mesmas cenas nos dois gateways, um por
+  vez (o próprio, depois o LiteLLM). **Não é benchmark.** Runner: `scripts/compare_gateways.py`; tabelas e CSV:
+  `python -m comparekit.report`. Cada requisição usa `temperature` 0, `max_tokens` 16 e prompts genéricos; os prompts
+  grandes são texto genérico repetido, gerado na hora.
+- **Estado zerado:** o gateway e o mock são reiniciados a cada cena e a cada repetição (3 repetições; os dois modelos
+  locais foram aquecidos antes e essa rodada foi descartada; cada subida ainda faz uma requisição descartada ao Qwen).
+  O `/chaos` e o `/stats` do mock são zerados no início de cada cena. A medida de eficácia do cooldown e do breaker é
+  quantas chamadas CHEGARAM ao mock (`/stats`).
+- **LiteLLM sempre sob a trava de rede:** as três camadas do Marco 13 (audit hook, proxy sumidouro e monitor de conexões)
+  em todas as subidas do proxy; qualquer bloqueio pararia a execução. Resultado na seção 5.
+- **Configs:** o gateway próprio usa `config.demo.yaml` (derivado, como na demo) e o LiteLLM usa
+  `litellm/config.litellm.yaml`, sem alteração. Duas diferenças deliberadas, iguais nos dois gateways: (1) **o `rpm` do
+  `mock_market` só existe na cena 2**; nas outras cenas foi removido, porque numa tentativa exploratória (descartada) o
+  `rpm: 10` (janela de 1 minuto no LiteLLM) barrava a 10ª chamada ao mock e se confundia com o efeito do breaker; (2) na
+  cena 7 os dois Ollama apontam para uma porta local sem serviço, porque derrubar o Ollama de verdade não era viável.
+- **Variante `allowed_fails: 2` do LiteLLM** (identificada nas tabelas como `LiteLLM 1.103.1 (allowed_fails: 2)`), só nas
+  cenas 3c, 3d, 4, 5a, 5b e 6. Motivo no achado 1: o valor 3 do config do Marco 13 ficou inativo.
+- **Duas execuções do runner:** a principal (cenas 1 a 9, as três configurações) e uma complementar (cenas 3c e 3d), feita
+  depois que a cena 3 mostrou que um único 429 não ativa o contador de falhas do LiteLLM. As duas usam o mesmo runner e a
+  mesma trava. As sondas de recursos (seção 5) rodaram numa terceira vez, também sob a trava.
+- **Medida de tempo:** "tempo até voltar ao mock" vai do fim da requisição que abriu o cooldown (ou da queda do mock) até
+  o envio da primeira requisição que chegou ao mock; a resolução é o intervalo de sondagem (0,5 s nas cenas 3; 0,25 s na
+  cena 6). Dispersão de até 1 s entre repetições é tratada como o mesmo resultado.
+- **Cena 6 (recuperação):** o mock volta com 2 s de latência e o runner dispara uma sondagem a cada 0,25 s sem esperar a
+  resposta; assim se vê quantas requisições o gateway deixa chegar ao provedor enquanto a primeira chamada ainda está em
+  andamento (uma sonda controlada ou todas).
+- **Cena 9:** no LiteLLM, forçar é tentar pelo nome do modelo no request, como pedido.
+- **Fora do repositório:** os resultados brutos (com headers e texto de erro dos gateways) ficam em `compare_results/`,
+  ignorado pelo git; o CSV e este documento só têm agregados.
+
+## 5. Resultados
+
+<!-- BEGIN GENERATED: comparekit.report (nao editar a mao; rode python -m comparekit.report) -->
+
+> **Avisos obrigatórios**
+>
+> - Os resultados valem para o LiteLLM 1.103.1 (setembro/2026), em um Windows, no modo só-config, em um cenário específico com o mock, e não devem ser generalizados; versões diferentes podem se comportar de modo diferente.
+> - A comparação é de COMPORTAMENTO num cenário, não de qualidade geral nem de desempenho.
+> - O gateway próprio é um projeto de estudo e o LiteLLM é um produto muito mais completo e muito mais amplo, que não foi avaliado aqui além deste cenário.
+> - Latências de uma máquina, sem concorrência e com poucas repetições são só indicativas.
+
+Execução `m14-full`: 3 repetições por cena e por gateway, o gateway e o mock reiniciados a cada repetição; cada requisição usa `temperature` 0 e `max_tokens` 16.
+
+**Como ler as tabelas**
+
+- **Tentativas de fallback** não são chamadas feitas: no gateway próprio é o número de provedores listados em `x-gateway-fallback-reason` (inclui os pulados sem chamada, como `cooling_down` e `context_too_large`); no LiteLLM é o valor de `x-litellm-attempted-fallbacks`. A medida de quantas chamadas CHEGARAM ao provedor é a coluna do mock (`/stats` do mock, zerado a cada repetição).
+- **Tempo até voltar ao mock**: do fim da requisição que provocou o cooldown (ou da queda do mock) até o envio da primeira requisição que chegou ao mock; a resolução é o intervalo de sondagem (0,5 s nas cenas 3a e 3b, 0,25 s na cena 6). Dispersão de até 1 s entre repetições é tratada como o mesmo resultado.
+- **Estabilidade**: as 3 repetições têm os mesmos status, provedores, tentativas e chamadas ao mock. Quando divergem, a tabela mostra cada valor com a contagem, sem escolher um.
+
+### Comportamento por cena
+
+| Cena | Gateway | Requisições (status) | Provedor que respondeu | Tentativas de fallback | Chamadas que chegaram ao mock | Tempo até voltar ao mock (s) | Estabilidade |
+|---|---|---|---|---|---|---|---|
+| 1: Normal | gateway próprio | 200 x3 | mock_market x3 | 0 | 3 | — | 3/3 iguais |
+| 1: Normal | LiteLLM 1.103.1 | 200 x3 | mock_market x3 | 0 | 3 | — | 3/3 iguais |
+| 2: Limite local (rpm 10, 13 requisições seguidas) | gateway próprio | 200 x13 | mock_market x10|ollama_qwen x3 | 3 | 10 | — | 3/3 iguais |
+| 2: Limite local (rpm 10, 13 requisições seguidas) | LiteLLM 1.103.1 | 200 x13 | mock_market x9|ollama_qwen x4 | 4 | 9 | — | 3/3 iguais |
+| 3a: 429 com Retry-After de 2 s | gateway próprio | 200 x6 | ollama_qwen x5|mock_market | 5 | 2 | 2.0 | 3/3 iguais |
+| 3a: 429 com Retry-After de 2 s | LiteLLM 1.103.1 | 200 x2 | ollama_qwen|mock_market | 1 | 2 | 0.0 | 3/3 iguais |
+| 3b: 429 com Retry-After de 15 s | gateway próprio | 200 x32 | ollama_qwen x31|mock_market | 31 | 2 | 15.2 | 3/3 iguais |
+| 3b: 429 com Retry-After de 15 s | LiteLLM 1.103.1 | 200 x2 | ollama_qwen|mock_market | 1 | 2 | 0.0 | 3/3 iguais |
+| 3c: 429 repetidos com Retry-After de 2 s (até 8 requisições) | gateway próprio | 200 x8 | ollama_qwen x7|mock_market | 7 | 2 | 2.1 a 2.2 | 3/3 iguais |
+| 3c: 429 repetidos com Retry-After de 2 s (até 8 requisições) | LiteLLM 1.103.1 | 200 x9 | ollama_qwen x8|mock_market | 8 | 9 | 0.0 | 3/3 iguais |
+| 3c: 429 repetidos com Retry-After de 2 s (até 8 requisições) | LiteLLM 1.103.1 (allowed_fails: 2) | 200 x10 | ollama_qwen x9|mock_market | 9 | 4 | 2.2 | 3/3 iguais |
+| 3d: 429 repetidos com Retry-After de 15 s (até 8 requisições) | gateway próprio | 200 x34 | ollama_qwen x33|mock_market | 33 | 2 | 15.4 | 3/3 iguais |
+| 3d: 429 repetidos com Retry-After de 15 s (até 8 requisições) | LiteLLM 1.103.1 | 200 x9 | ollama_qwen x8|mock_market | 8 | 9 | 0.0 | 3/3 iguais |
+| 3d: 429 repetidos com Retry-After de 15 s (até 8 requisições) | LiteLLM 1.103.1 (allowed_fails: 2) | 200 x36 | ollama_qwen x35|mock_market | 35 | 4 | 15.3 a 15.4 | 3/3 iguais |
+| 4: Falha 5xx contínua (10 requisições) | gateway próprio | 200 x10 | ollama_qwen x10 | 10 | 3 | — | 3/3 iguais |
+| 4: Falha 5xx contínua (10 requisições) | LiteLLM 1.103.1 | 200 x10 | ollama_qwen x10 | 10 | 10 | — | 3/3 iguais |
+| 4: Falha 5xx contínua (10 requisições) | LiteLLM 1.103.1 (allowed_fails: 2) | 200 x10 | ollama_qwen x10 | 10 | 3 | — | 3/3 iguais |
+| 5a: Falhas intercaladas: 2 falhas, 1 sucesso, repetido 4 vezes | gateway próprio | 200 x12 | ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market | 8 | 12 | — | 3/3 iguais |
+| 5a: Falhas intercaladas: 2 falhas, 1 sucesso, repetido 4 vezes | LiteLLM 1.103.1 | 200 x12 | ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market | 8 | 12 | — | 3/3 iguais |
+| 5a: Falhas intercaladas: 2 falhas, 1 sucesso, repetido 4 vezes | LiteLLM 1.103.1 (allowed_fails: 2) | 200 x12 | ollama_qwen x2|mock_market|ollama_qwen x9 | 11 | 4 | — | 3/3 iguais |
+| 5b: Falhas intercaladas: falha, sucesso, repetido 5 vezes | gateway próprio | 200 x10 | ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market | 5 | 10 | — | 3/3 iguais |
+| 5b: Falhas intercaladas: falha, sucesso, repetido 5 vezes | LiteLLM 1.103.1 | 200 x10 | ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market | 5 | 10 | — | 3/3 iguais |
+| 5b: Falhas intercaladas: falha, sucesso, repetido 5 vezes | LiteLLM 1.103.1 (allowed_fails: 2) | 200 x10 | ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen x6 | 8 | 5 | — | 3/3 iguais |
+| 6: Recuperação (mock volta lento, sondagem a cada 0,25 s) | gateway próprio | 200 x60 | ollama_qwen x43|mock_market|ollama_qwen x7|mock_market x9 | 50 | 13 | 9.8 a 10.0 | 3/3 iguais |
+| 6: Recuperação (mock volta lento, sondagem a cada 0,25 s) | LiteLLM 1.103.1 | 200 x27 | ollama_qwen x10|mock_market x17 | 10 | 27 | 0.0 | 3/3 iguais |
+| 6: Recuperação (mock volta lento, sondagem a cada 0,25 s) | LiteLLM 1.103.1 (allowed_fails: 2) | 200 x60 | ollama_qwen x43|mock_market x17 | 43 | 20 | 9.9 a 10.0 | 3/3 iguais |
+| 7: Tudo indisponível (Ollama apontado para porta sem serviço, mock em 429) | gateway próprio | 503 x2 | none x2 | 6 | 1 | — | 3/3 iguais |
+| 7: Tudo indisponível (Ollama apontado para porta sem serviço, mock em 429) | LiteLLM 1.103.1 | 429 x2 | none x2 | 0 | 2 | — | 3/3 iguais |
+| 8a: Prompt maior que todas as janelas (~44 mil caracteres) | gateway próprio | 503|200 | none|mock_market | 3 | 1 | — | 3/3 iguais |
+| 8a: Prompt maior que todas as janelas (~44 mil caracteres) | LiteLLM 1.103.1 | 400|200 | none|mock_market | 0 | 1 | — | 3/3 iguais |
+| 8b: Prompt maior que a janela do Ollama, menor que a do mock (~16 mil caracteres, mock em 429) | gateway próprio | 503 | none | 3 | 1 | — | 3/3 iguais |
+| 8b: Prompt maior que a janela do Ollama, menor que a do mock (~16 mil caracteres, mock em 429) | LiteLLM 1.103.1 | 429 | none | 0 | 1 | — | 3/3 iguais |
+| 9: Forçar provedor | gateway próprio | 200|503|400 | ollama_qwen|none x2 | 1 | 1 | — | 3/3 iguais |
+| 9: Forçar provedor | LiteLLM 1.103.1 | 200 x2|429|400 | ollama_qwen x2|none x2 | 1 | 2 | — | 3/3 iguais |
+
+### Métricas derivadas
+
+| Cena | Métrica | gateway próprio | LiteLLM 1.103.1 | LiteLLM 1.103.1 (allowed_fails: 2) |
+|---|---|---|---|---|
+| 3c | chamadas ao mock até o gateway parar de chamá-lo | 1 | não parou/não aplicável | 3 |
+| 3c | o gateway parou de chamar o mock antes da recuperação | True | False | True |
+| 3d | chamadas ao mock até o gateway parar de chamá-lo | 1 | não parou/não aplicável | 3 |
+| 3d | o gateway parou de chamar o mock antes da recuperação | True | False | True |
+| 4 | chamadas ao mock até o gateway parar de chamá-lo | 3 | não parou/não aplicável | 3 |
+| 5a | 1ª requisição que deixou de chegar ao mock | não parou/não aplicável | não parou/não aplicável | 5 |
+| 5b | 1ª requisição que deixou de chegar ao mock | não parou/não aplicável | não parou/não aplicável | 6 |
+| 6 | o gateway parou de chamar o mock antes da recuperação | True | False | True |
+| 6 | na janela da 1ª chamada lenta: (respondidas pelo mock, respondidas por outro) | [1, 7] | [8, 0] | [8, 0] |
+| 6 | chamadas ao mock depois que ele voltou | 10 | 17 | 17 |
+
+### Recursos e observabilidade
+
+| Funcionalidade | Gateway próprio | LiteLLM | Como foi verificado |
+|---|---|---|---|
+| Fallback entre provedores na ordem configurada | sim (`chain`) | sim (`router_settings.fallbacks`) | experimento (cenas 3 a 9) |
+| Motivo do fallback na resposta | header `x-gateway-fallback-reason` com o motivo por provedor, inclusive os pulados sem chamada | header `x-litellm-attempted-fallbacks` só com a contagem; o motivo não vem em header, e os headers que registrei (`x-litellm-model-id`, `-attempted-fallbacks`, ...) não aparecem nas respostas de erro; nos erros o motivo vem em texto livre no corpo | experimento (cenas 3, 7 e 8) |
+| Corpo do erro quando tudo falha | 503 estruturado, com `error.providers` (motivo por provedor) e `Retry-After` | o status do primeiro erro (429 na cena 7), uma mensagem única em texto livre que cita os grupos; sem `Retry-After` | experimento (cena 7) |
+| Limite local de requisições por minuto (rpm) | balde de 10 que reabastece 1 a cada 6 s; 10 chamadas chegaram ao mock | `rpm: 10` por minuto; 9 chamadas chegaram ao mock e as demais foram para o fallback, antes de chamar o mock | experimento (cena 2; o motivo de 9 e não 10 não foi investigado) |
+| Respeito ao `Retry-After` de um 429 | sim: o cooldown dura o valor do header (2,0 a 2,2 s e 15,2 a 15,4 s) | com `allowed_fails: 3` (config do Marco 13) um 429, ou mesmo 9 seguidos, não abriu cooldown; com `allowed_fails: 2` o cooldown durou o valor do header (2,2 s e 15,3 a 15,4 s), não o `cooldown_time` de 10 s | experimento (cenas 3a a 3d) |
+| Limite de falhas até parar de chamar o provedor | 3 falhas CONSECUTIVAS (um sucesso zera a contagem) | contagem por janela de tempo, sem zerar com sucesso; ver o achado sobre `allowed_fails` (o valor 3 é o padrão e ficou inativo) | experimento (cenas 4, 5a e 5b; leitura de `router_utils/cooldown_handlers.py` confirma a janela) |
+| Recuperação do provedor | meia-abertura com sonda controlada: uma chamada passa e as concorrentes vão ao fallback | volta direto depois do cooldown: todas as chamadas concorrentes foram ao mock | experimento (cena 6, com o mock lento) |
+| Janela de contexto do provedor | pula o provedor antes de chamar, com estimativa de caracteres/4 | pula antes de chamar (`enable_pre_call_checks`), contando tokens com o tokenizador da biblioteca (9822 e 3574 tokens contra 11000 e 4000 da estimativa chars/4); responde 400, não 503 | experimento (cenas 8a e 8b; a diferença das estimativas só foi medida nestes dois prompts) |
+| Forçar um provedor | header `x-gateway-force-provider`; sem fallback; nome desconhecido dá 400 | pedir o grupo pelo nome do modelo (`model: ollama_qwen`) funciona; para o grupo com fallbacks, `disable_fallbacks: true` no corpo desliga o fallback; não há header equivalente | experimento (cena 9) |
+| Estado do gateway (status) | `GET /status` com breaker, baldes e cooldown restante por provedor | `/health/liveliness`, `/health/readiness`, `/health` (lista endpoints saudáveis), `/model/info`; sem endpoint com o estado de cooldown (`/cooldown` dá 404) | experimento |
+| Métricas Prometheus | `GET /metrics` com 9 famílias (`gateway_requests_total`, `gateway_fallback_total`, `gateway_breaker_state`, `gateway_latency_seconds`, `gateway_budget_remaining`, ...) | `/metrics` dá 404 no modo só-config; com o callback `prometheus` o proxy NÃO sobe no ambiente travado por hash, porque `prometheus_client` não está no lock; quais métricas ele exporia não foi verificado | experimento (o código do logger cita usuários `premium` (nos filtros de rótulos); se há métricas só enterprise não foi verificado) |
+| Gravação de requisições e respostas em arquivo | recorder em JSONL (`record_content` liga ou desliga o conteúdo) | não encontrei logger de arquivo embutido; as integrações embutidas enviam a serviços remotos ou usam banco; um callback customizado em Python seria possível (não testado) | código instalado (busca por escrita em arquivo em `integrations/`, `litellm_core_utils/` e `proxy/`) |
+| Orçamento ou contador de chamadas | orçamento de chamadas em arquivo (`data/budget.json`), reservado antes da chamada | `max_budget` do proxy é em custo, e o código diz que sem banco o orçamento NÃO é aplicado e nenhuma requisição é bloqueada | código instalado (aviso em `proxy_server.py`; não executado) |
+| Limite de TPM e `timeout` por tentativa | TPM no balde local; `timeout_s` por tentativa | existem no config (`tpm`, `timeout`) | não verificado (a demo usa `tpm: null` e nenhuma cena mede o timeout) |
+| Streaming | não suportado (400) | não avaliado | não verificado (fora do escopo da comparação; o LiteLLM é um produto muito mais amplo, não avaliado aqui) |
+| Outros provedores de LLM | mock, Ollama e Anthropic (fail-closed) | não avaliado | não verificado (fora do escopo da comparação; o LiteLLM é um produto muito mais amplo, não avaliado aqui) |
+| Chaves virtuais, UI e banco | não existe | não avaliado | não verificado (fora do escopo da comparação; o LiteLLM é um produto muito mais amplo, não avaliado aqui (só `/global/spend` e `/spend/logs` mostraram que dependem de banco)) |
+
+### Trava de rede do LiteLLM (todas as subidas do proxy)
+
+- Subidas do proxy: 62; processos Python com a trava armada: 62; amostras do monitor externo: 698.
+- Eventos BLOQUEADOS: 0; conexões fora do loopback vistas pelo monitor externo: 0; processos restantes: 0.
+- Eventos permitidos (todos para loopback):
+  - 172 x `asyncio.sock_connect -> '127.0.0.1':mock`
+  - 176 x `asyncio.sock_connect -> '127.0.0.1':ollama`
+  - 21 x `asyncio.sock_connect -> '127.0.0.1':porta-sem-servico`
+  - 125 x `socket.connect -> 127.0.0.1 (porta dinâmica, loopback do próprio proxy)`
+
+<!-- END GENERATED: comparekit.report -->
+
+CSV agregado: [`reports/fase2-gateway-vs-litellm.csv`](../reports/fase2-gateway-vs-litellm.csv) (uma linha por cena,
+gateway e repetição).
+
+## 6. Achados
+
+**Do Marco 13**
+- **CRLF do tiktoken:** os arquivos de cache embutidos no wheel têm CRLF, a verificação de SHA-256 do `tiktoken` os rejeita
+  e o proxy tentou baixar o `cl100k_base` na inicialização; contornado com um cache temporário em LF conferido por hash
+  (seção 2). Observado só neste ambiente e nesta versão.
+- **A trava de rede funcionou:** bloqueou essa tentativa de saída antes de a conexão acontecer; no Marco 14, em todas as
+  subidas do proxy, não houve nenhum bloqueio.
+
+**Do Marco 14** (as 3 repetições concordaram em todas as linhas das tabelas)
+1. **O `allowed_fails: 3` do config do Marco 13 ficou inativo.** O código instalado
+   (`router_utils/cooldown_handlers.py`, `_is_allowed_fails_set_on_router`) trata um `allowed_fails` igual ao padrão da
+   biblioteca (3) como "não definido" e usa outra regra (mais de 50% de falhas no minuto, com pelo menos 5 requisições).
+   Na prática, com o config do Marco 13, 10 falhas 500 seguidas chegaram todas ao mock (cena 4) e 8 respostas 429 seguidas
+   também (cenas 3c e 3d). O mapa de equivalência daquele config dizia que `allowed_fails: 3` equivalia a
+   `failure_threshold: 3`; isso não se confirmou. Com `allowed_fails: 2` (o contador usa `>`), o LiteLLM parou de chamar o
+   mock depois de 3 falhas, como o gateway próprio. O config do Marco 13 não foi alterado; a variante entra só nas tabelas.
+2. **Falhas consecutivas x janela de tempo.** Nas falhas intercaladas (cenas 5a e 5b) o gateway próprio, que conta falhas
+   consecutivas, nunca parou de chamar o mock (12 de 12 e 10 de 10). O LiteLLM com `allowed_fails: 2` parou depois da 3ª
+   falha, mesmo com sucessos no meio (a 5ª requisição da 5a e a 6ª da 5b já não chegaram ao mock): o sucesso não zera a
+   contagem. É coerente com a leitura do código (contador com TTL igual ao `cooldown_time`).
+3. **`Retry-After`.** O gateway próprio espera o valor do header (2,0 a 2,2 s com `Retry-After` de 2 s; 15,2 a 15,4 s com
+   15 s). No LiteLLM, **um único 429 não abriu cooldown nenhum** (cenas 3a e 3b: a sondagem seguinte já voltou ao mock). Com
+   o contador ativo (`allowed_fails: 2`) o cooldown abriu e durou o valor do header (2,2 s e 15,3 a 15,4 s), e não o
+   `cooldown_time` fixo de 10 s. Não testado: 429 sem `Retry-After`.
+4. **Recuperação.** O gateway próprio usa meia-abertura com sonda controlada: com o mock lento, na janela da primeira
+   chamada 1 requisição chegou ao mock e 7 foram para o fallback. O LiteLLM (variante `allowed_fails: 2`) voltou ao mock
+   depois de 9,9 a 10,0 s (o `cooldown_time`) e deixou chegar todas as 8 requisições da janela: não há sonda controlada.
+5. **`rpm`.** Com o limite no mock em 10 por minuto e 13 requisições seguidas, o gateway próprio deixou 10 chegarem ao mock
+   e o LiteLLM 9; nos dois o excedente foi para o Qwen sem chamar o mock. O motivo de 9 no LiteLLM não foi investigado.
+6. **Tudo indisponível (cena 7).** O gateway próprio devolve 503 com `error.providers` (motivo por provedor) e os motivos
+   também no header `x-gateway-fallback-reason`. O LiteLLM devolveu 429 (o status do primeiro erro), com uma mensagem
+   única em texto livre que cita os grupos e os erros; sem `Retry-After` e sem os headers `x-litellm-*` que o smoke tinha
+   mostrado nas respostas 200.
+7. **Janela de contexto.** Os dois pulam o provedor antes de chamar (o mock só recebeu a requisição de controle da cena
+   8a). O gateway próprio responde 503 com o motivo `context_too_large`; o LiteLLM responde 400
+   (`ContextWindowExceededError`), e na cena 8b o erro final foi o 429 do mock, com o erro de contexto do fallback dentro
+   da mensagem. As estimativas diferem: o prompt grande teve 9822 tokens contados pelo LiteLLM e 11000 pela estimativa
+   caracteres/4 do gateway próprio (3574 e 4000 no prompt médio); só dois prompts foram medidos.
+8. **Forçar provedor.** O gateway próprio tem `x-gateway-force-provider` (sem fallback; forçar o `mock_market` com o mock
+   em 429 deu 503 sem fallback; nome desconhecido deu 400). O LiteLLM não tem header equivalente: pedir
+   `model: ollama_qwen` funciona; pedir `model: mock_market` com o mock em 429 ainda faz o fallback (200 do Qwen); com
+   `disable_fallbacks: true` no corpo o fallback não ocorre (429).
+9. **Observabilidade.** Sem recurso enterprise e sem ligar nada externo: no modo só-config o LiteLLM não tem `/metrics`
+   (404); com o callback `prometheus` ele não sobe neste ambiente porque o pacote `prometheus_client` não está no lock com
+   hashes (não foi instalado nada novo). Não há endpoint com o estado de cooldown (`/cooldown` dá 404). O gateway próprio
+   expõe `/status` e `/metrics`.
+
+## 7. Fora do escopo da comparação
+
+Streaming, outros provedores de LLM, chaves virtuais, UI e banco: **o LiteLLM é um produto muito mais amplo, e isso não
+foi avaliado aqui.** A tabela de recursos marca essas linhas como "não verificado". O gateway próprio é um projeto de
+estudo e não tem essas funcionalidades.
+
+## 8. Limitações
+
+- Vale para o **LiteLLM 1.103.1 (setembro/2026), em um Windows 11, no modo só-config, num cenário específico com o mock**;
+  não deve ser generalizado, e versões diferentes podem se comportar de modo diferente.
+- É uma comparação de **comportamento num cenário**, não de qualidade geral nem de desempenho. Latências (que ficam só nos
+  dados brutos) de uma máquina, sem concorrência e com 3 repetições são só indicativas.
+- O config do LiteLLM não é o único possível: o resultado depende de `allowed_fails`, `cooldown_time`, `rpm` e da
+  estratégia de roteamento escolhidos; as diferenças entre as colunas "LiteLLM" e "LiteLLM (allowed_fails: 2)" mostram
+  isso. Outras combinações não foram testadas.
+- Resolução do tempo: 0,25 a 0,5 s. As três repetições concordaram em tudo, mas é uma amostra pequena e determinística
+  (mock).
+- Não verificado: TPM, `timeout` por tentativa, 429 sem `Retry-After`, o motivo do 9 no `rpm`, quais métricas o callback
+  `prometheus` exporia, gravação em arquivo com callback customizado, comportamento com vários workers ou Redis.
+- Os achados de código instalado (gravação em arquivo, orçamento sem banco) vêm de leitura e busca, não de execução.
