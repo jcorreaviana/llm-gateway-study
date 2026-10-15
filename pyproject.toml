@@ -1,5 +1,5 @@
 [tool.coverage.run]
-source = ["gateway", "mock_upstream", "evalkit"]
+source = ["gateway", "mock_upstream", "evalkit", "comparekit"]
 branch = true
 
 [tool.coverage.report]

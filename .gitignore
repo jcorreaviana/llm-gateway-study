@@ -50,3 +50,6 @@ desktop.ini
 
 # Venv isolado do LiteLLM (nunca instalar no .venv do projeto)
 .venv-litellm/
+
+# Resultados brutos da comparacao de gateways (Marco 14): podem conter texto de erro e headers
+compare_results/
