@@ -26,63 +26,69 @@ cena,gateway,repeticao,requisicoes,status,provedor,tentativas,chamadas_ao_mock,t
 3c,proprio,1,8,200 x8,ollama_qwen x7|mock_market,7,2,2.19
 3c,proprio,2,8,200 x8,ollama_qwen x7|mock_market,7,2,2.14
 3c,proprio,3,8,200 x8,ollama_qwen x7|mock_market,7,2,2.18
-3c,litellm,1,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
-3c,litellm,2,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
-3c,litellm,3,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
 3c,litellm_af2,1,10,200 x10,ollama_qwen x9|mock_market,9,4,2.21
 3c,litellm_af2,2,10,200 x10,ollama_qwen x9|mock_market,9,4,2.17
 3c,litellm_af2,3,10,200 x10,ollama_qwen x9|mock_market,9,4,2.17
+3c,litellm,1,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
+3c,litellm,2,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
+3c,litellm,3,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
 3d,proprio,1,34,200 x34,ollama_qwen x33|mock_market,33,2,15.37
 3d,proprio,2,34,200 x34,ollama_qwen x33|mock_market,33,2,15.37
 3d,proprio,3,34,200 x34,ollama_qwen x33|mock_market,33,2,15.38
-3d,litellm,1,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
-3d,litellm,2,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
-3d,litellm,3,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
 3d,litellm_af2,1,36,200 x36,ollama_qwen x35|mock_market,35,4,15.38
 3d,litellm_af2,2,36,200 x36,ollama_qwen x35|mock_market,35,4,15.35
 3d,litellm_af2,3,36,200 x36,ollama_qwen x35|mock_market,35,4,15.32
+3d,litellm,1,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
+3d,litellm,2,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
+3d,litellm,3,9,200 x9,ollama_qwen x8|mock_market,8,9,0.00
 4,proprio,1,10,200 x10,ollama_qwen x10,10,3,
 4,proprio,2,10,200 x10,ollama_qwen x10,10,3,
 4,proprio,3,10,200 x10,ollama_qwen x10,10,3,
-4,litellm,1,10,200 x10,ollama_qwen x10,10,10,
-4,litellm,2,10,200 x10,ollama_qwen x10,10,10,
-4,litellm,3,10,200 x10,ollama_qwen x10,10,10,
 4,litellm_af2,1,10,200 x10,ollama_qwen x10,10,3,
 4,litellm_af2,2,10,200 x10,ollama_qwen x10,10,3,
 4,litellm_af2,3,10,200 x10,ollama_qwen x10,10,3,
+4,litellm,1,10,200 x10,ollama_qwen x10,10,10,
+4,litellm,2,10,200 x10,ollama_qwen x10,10,10,
+4,litellm,3,10,200 x10,ollama_qwen x10,10,10,
 5a,proprio,1,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
 5a,proprio,2,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
 5a,proprio,3,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
-5a,litellm,1,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
-5a,litellm,2,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
-5a,litellm,3,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
 5a,litellm_af2,1,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x9,11,4,
 5a,litellm_af2,2,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x9,11,4,
 5a,litellm_af2,3,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x9,11,4,
+5a,litellm,1,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
+5a,litellm,2,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
+5a,litellm,3,12,200 x12,ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market|ollama_qwen x2|mock_market,8,12,
 5b,proprio,1,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
 5b,proprio,2,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
 5b,proprio,3,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
-5b,litellm,1,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
-5b,litellm,2,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
-5b,litellm,3,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
 5b,litellm_af2,1,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen x6,8,5,
 5b,litellm_af2,2,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen x6,8,5,
 5b,litellm_af2,3,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen x6,8,5,
+5b,litellm,1,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
+5b,litellm,2,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
+5b,litellm,3,10,200 x10,ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market|ollama_qwen|mock_market,5,10,
 6,proprio,1,60,200 x60,ollama_qwen x43|mock_market|ollama_qwen x7|mock_market x9,50,13,9.96
 6,proprio,2,60,200 x60,ollama_qwen x43|mock_market|ollama_qwen x7|mock_market x9,50,13,9.85
 6,proprio,3,60,200 x60,ollama_qwen x43|mock_market|ollama_qwen x7|mock_market x9,50,13,9.92
-6,litellm,1,27,200 x27,ollama_qwen x10|mock_market x17,10,27,0.00
-6,litellm,2,27,200 x27,ollama_qwen x10|mock_market x17,10,27,0.00
-6,litellm,3,27,200 x27,ollama_qwen x10|mock_market x17,10,27,0.00
 6,litellm_af2,1,60,200 x60,ollama_qwen x43|mock_market x17,43,20,10.02
 6,litellm_af2,2,60,200 x60,ollama_qwen x43|mock_market x17,43,20,9.86
 6,litellm_af2,3,60,200 x60,ollama_qwen x43|mock_market x17,43,20,9.95
+6,litellm,1,27,200 x27,ollama_qwen x10|mock_market x17,10,27,0.00
+6,litellm,2,27,200 x27,ollama_qwen x10|mock_market x17,10,27,0.00
+6,litellm,3,27,200 x27,ollama_qwen x10|mock_market x17,10,27,0.00
 7,proprio,1,2,503 x2,none x2,6,1,
 7,proprio,2,2,503 x2,none x2,6,1,
 7,proprio,3,2,503 x2,none x2,6,1,
 7,litellm,1,2,429 x2,none x2,0,2,
 7,litellm,2,2,429 x2,none x2,0,2,
 7,litellm,3,2,429 x2,none x2,0,2,
+7b,proprio,1,2,503 x2,none x2,6,2,
+7b,proprio,2,2,503 x2,none x2,6,2,
+7b,proprio,3,2,503 x2,none x2,6,2,
+7b,litellm,1,2,500 x2,none x2,0,2,
+7b,litellm,2,2,500 x2,none x2,0,2,
+7b,litellm,3,2,500 x2,none x2,0,2,
 8a,proprio,1,2,503|200,none|mock_market,3,1,
 8a,proprio,2,2,503|200,none|mock_market,3,1,
 8a,proprio,3,2,503|200,none|mock_market,3,1,

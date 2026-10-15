@@ -31,7 +31,7 @@ CSV_PATH = ROOT / "reports" / "fase2-gateway-vs-litellm.csv"
 BEGIN = "<!-- BEGIN GENERATED: comparekit.report (nao editar a mao; rode python -m comparekit.report) -->"
 END = "<!-- END GENERATED: comparekit.report -->"
 
-SCENE_ORDER = ("1", "2", "3a", "3b", "3c", "3d", "4", "5a", "5b", "6", "7", "8a", "8b", "9")
+SCENE_ORDER = ("1", "2", "3a", "3b", "3c", "3d", "4", "5a", "5b", "6", "7", "7b", "8a", "8b", "9")
 SCENE_TITLES = {
     "1": "Normal", "2": "Limite local (rpm 10, 13 requisições seguidas)",
     "3a": "429 com Retry-After de 2 s", "3b": "429 com Retry-After de 15 s",
@@ -41,12 +41,13 @@ SCENE_TITLES = {
     "5b": "Falhas intercaladas: falha, sucesso, repetido 5 vezes",
     "6": "Recuperação (mock volta lento, sondagem a cada 0,25 s)",
     "7": "Tudo indisponível (Ollama apontado para porta sem serviço, mock em 429)",
+    "7b": "Tudo indisponível (Ollama apontado para porta sem serviço, mock em 500)",
     "8a": "Prompt maior que todas as janelas (~44 mil caracteres)",
     "8b": "Prompt maior que a janela do Ollama, menor que a do mock (~16 mil caracteres, mock em 429)",
     "9": "Forçar provedor",
 }
 TIMED_SCENES = frozenset({"3a", "3b", "3c", "3d", "6"})
-GATEWAY_ORDER = ("proprio", "litellm", "litellm_af2")
+GATEWAY_ORDER = ("proprio", "litellm_af2", "litellm")
 
 # Avisos obrigatórios (testados: o bloco gerado SEMPRE os contém).
 W_VERSION = ("Os resultados valem para o LiteLLM 1.103.1 (setembro/2026), em um Windows, no modo só-config, em um "
@@ -66,6 +67,11 @@ HOW_TO_READ = (
     "**Tempo até voltar ao mock**: do fim da requisição que provocou o cooldown (ou da queda do mock) até o envio da "
     "primeira requisição que chegou ao mock; a resolução é o intervalo de sondagem (0,5 s nas cenas 3a e 3b, 0,25 s na "
     "cena 6). Dispersão de até 1 s entre repetições é tratada como o mesmo resultado.",
+    "**Coluna do config versionado do LiteLLM**: nas cenas de falha (3c, 3d, 4, 5a, 5b e 6) o contador de falhas está "
+    "inativo (`allowed_fails: 3` é o padrão da biblioteca), então \"não parou\" ali é efeito dessa configuração, não "
+    "uma limitação do produto; a coluna comparável ao gateway próprio é a de `allowed_fails: 2`. Nas cenas 1, 2, 3a, "
+    "3b, 7, 7b, 8a, 8b e 9 só o config versionado foi executado (o contador não está em jogo, ou um 429 só não o "
+    "ativa).",
     "**Estabilidade**: as 3 repetições têm os mesmos status, provedores, tentativas e chamadas ao mock. Quando "
     "divergem, a tabela mostra cada valor com a contagem, sem escolher um.",
 )
@@ -206,10 +212,12 @@ def stability(scene: str, runs: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _label(gateway: str, meta: Mapping[str, Any]) -> str:
-    if gateway == "litellm":
-        return f"LiteLLM {meta.get('litellm_version') or '?'}"
+    version = meta.get("litellm_version") or "?"
     if gateway == "litellm_af2":
-        return f"LiteLLM {meta.get('litellm_version') or '?'} (allowed_fails: 2)"
+        return f"LiteLLM {version} (allowed_fails: 2, comparável)"
+    if gateway == "litellm":
+        return (f"LiteLLM {version}, config versionado "
+                "(contador de falhas inativo: allowed_fails: 3 = padrão da biblioteca)")
     return "gateway próprio" if gateway == "proprio" else gateway
 
 
@@ -230,7 +238,7 @@ def behavior_table(runs: Iterable[Mapping[str, Any]], meta: Mapping[str, Any]) -
 
 
 def _extra_text(value: Any) -> str:
-    return "não parou/não aplicável" if value is None else str(value)
+    return "não parou dentro da cena" if value is None else str(value)
 
 
 def derived_table(runs: Iterable[Mapping[str, Any]], meta: Mapping[str, Any]) -> str:
@@ -357,12 +365,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--also", action="append", default=[], help="outra execucao a juntar (repetivel)")
+    parser.add_argument("--guard-from", action="append", default=[],
+                        help="execucao so de diagnostico: soma apenas a trava de rede (repetivel)")
     parser.add_argument("--doc", type=Path, default=DOC_PATH)
     parser.add_argument("--csv", type=Path, default=CSV_PATH)
     args = parser.parse_args(argv)
     try:
         probes_guard = RESULTS_ROOT / args.run_id / "netguard-probes.json"  # sondas de recursos (mesma trava)
         extra = [json.loads(probes_guard.read_text(encoding="utf-8"))] if probes_guard.exists() else []
+        extra += [load_run(r)[2] for r in args.guard_from]
         runs, meta, netguard = merge_runs([load_run(r) for r in (args.run_id, *args.also)], extra)
         block = render_generated_block(runs, meta, netguard)
         csv_text = render_csv(runs)

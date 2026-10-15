@@ -247,7 +247,7 @@ trava `find_leaks` desligada (2: `test_leak_guard_refuses_*`, `test_find_leaks_c
 | Requisito | Teste | Situação |
 |---|---|---|
 | Config sem provedor Anthropic, só hosts `127.0.0.1`/`localhost`, sem chave (master key só como referência ao ambiente) | `test_no_anthropic_provider_anywhere_in_config_values`, `test_only_loopback_hosts`, `test_no_key_in_config` | novo |
-| Ordem dos fallbacks igual à `chain` do `config.demo.yaml`; rpm, `allowed_fails`, cooldown, timeouts e contexto iguais aos da demo | `test_fallback_order_matches_demo_chain`, `test_limits_match_demo_values` | novo |
+| Ordem dos fallbacks igual à `chain` do `config.demo.yaml`; rpm, cooldown, timeouts e contexto iguais aos da demo (o `allowed_fails` NÃO é igual ao `failure_threshold`: o teste confere o valor 3, o padrão da biblioteca, e que o mapa registra a diferença, ver o Marco 14) | `test_fallback_order_matches_demo_chain`, `test_limits_match_demo_values` | novo |
 | Sem retry escondido; modo só-config (sem banco nem UI) | `test_hidden_retries_are_disabled`, `test_config_is_file_only_without_database_or_ui` | novo |
 | Mapa de equivalência cobre todos os campos da demo e marca como `[VERIFICAR]` o que a doc não deixa claro | `test_equivalence_map_covers_every_demo_field`, `test_map_flags_unverified_behaviour_instead_of_assuming`, `test_telemetry_note_points_to_the_cli_flag` | novo |
 | `.venv-litellm/` ignorado; litellm fora de `requirements*.txt` e do CI; pin exato; lock 100% com hashes, sem dado pessoal | `test_litellm_venv_is_gitignored`, `test_litellm_is_not_in_project_requirements_or_ci`, `test_input_pins_exact_version`, `test_lock_is_fully_hashed_and_documented` | novo |
@@ -282,6 +282,6 @@ texto (1).
 
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,02% medido no Marco 14, 764 testes + 12 de integração) em `gateway/`,
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (95,98% medido no Marco 14, 764 testes + 12 de integração) em `gateway/`,
 `mock_upstream/`, `evalkit/` e `comparekit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.

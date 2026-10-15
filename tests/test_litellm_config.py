@@ -65,7 +65,12 @@ def test_limits_match_demo_values():
     mock = DEMO_PROVIDERS["mock_market"]
     router = CFG["router_settings"]
     assert GROUPS["mock_market"]["litellm_params"]["rpm"] == mock["rate_limit"]["rpm"]
-    assert router["allowed_fails"] == mock["breaker"]["failure_threshold"]
+    # NÃO é igualdade: no LiteLLM 1.103.1 o cooldown abre quando as falhas PASSAM de allowed_fails, e o valor padrão da
+    # biblioteca (3) é tratado como "não definido". O mapa precisa registrar essa diferença (Marco 14).
+    assert router["allowed_fails"] == 3
+    assert "allowed_fails: 2" in HEADER and f"failure_threshold: {mock['breaker']['failure_threshold']}" in HEADER
+    flat = re.sub(r"\s*\n#\s*", " ", HEADER)  # as frases do mapa quebram linha
+    assert "PADRÃO da biblioteca" in flat and "NÃO reproduz o breaker do gateway próprio" in flat
     assert router["cooldown_time"] == mock["breaker"]["cooldown_s"]
     for name, group in GROUPS.items():
         assert group["litellm_params"]["timeout"] == DEMO_PROVIDERS[name]["timeout_s"]

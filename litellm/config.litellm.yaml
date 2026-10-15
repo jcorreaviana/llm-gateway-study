@@ -30,13 +30,19 @@
 #   providers[].rate_limit.rpm        -> litellm_params.rpm (+ routing_strategy usage-based-routing-v2). O limite
 #                                        é aplicado de fato, e com que comportamento no excedente? [VERIFICAR]
 #   providers[].rate_limit.tpm        -> litellm_params.tpm. A demo usa tpm: null. Há limite de TPM? [VERIFICAR]
-#   providers[].breaker.failure_threshold    -> router_settings.allowed_fails. Conta falhas CONSECUTIVAS ou numa
-#                                        JANELA (a documentação fala em "por minuto")? [VERIFICAR]
+#   providers[].breaker.failure_threshold    -> router_settings.allowed_fails, MAS NÃO COM O MESMO NÚMERO (Marco 14,
+#                                        verificado por experimento e pelo código instalado no LiteLLM 1.103.1): o
+#                                        cooldown abre quando as falhas PASSAM de allowed_fails, contadas numa JANELA
+#                                        de tempo (o sucesso não zera). failure_threshold: 3 corresponde a
+#                                        allowed_fails: 2. O valor 3 usado abaixo é o PADRÃO da biblioteca e o código
+#                                        instalado o trata como "não definido" (contador inativo): este arquivo NÃO
+#                                        reproduz o breaker do gateway próprio. A variante comparável é allowed_fails: 2.
 #   providers[].breaker.cooldown_s    -> router_settings.cooldown_time
 #   providers[].breaker.half_open_max_calls  -> sem equivalente direto (sem sonda controlada documentada). [VERIFICAR]
-#   providers[].default_retry_after_s -> sem equivalente direto. O LiteLLM respeita o `Retry-After` de um 429
-#                                        e abre cooldown por ele, ou usa só o cooldown_time? [VERIFICAR]
-#   429 não conta para o breaker      -> no LiteLLM, um 429 entra no cooldown por outra regra? [VERIFICAR]
+#   providers[].default_retry_after_s -> sem equivalente direto. Marco 14: com o contador ativo (allowed_fails: 2) o
+#                                        cooldown aberto por 429 durou o valor do `Retry-After` (2 s e 15 s), não o
+#                                        cooldown_time; com um 429 só (ou com allowed_fails: 3) não houve cooldown.
+#   429 não conta para o breaker      -> no LiteLLM 1.103.1 um 429 entra na mesma contagem de falhas (Marco 14).
 #   providers[].warmup                -> sem equivalente
 #   providers[].real_api_max_input_tokens, providers[].max_tokens_cap -> sem equivalente (só existiam por causa
 #                                        do provedor Anthropic)
@@ -82,7 +88,7 @@ model_list:
 
 router_settings:
   num_retries: 0                  # sem retentativa escondida
-  allowed_fails: 3                # breaker.failure_threshold da demo (semântica: ver o mapa)
+  allowed_fails: 3                # PADRÃO da biblioteca = "não definido" (contador inativo); NÃO equivale a failure_threshold: 3 (ver o mapa)
   cooldown_time: 10               # breaker.cooldown_s da demo
   enable_pre_call_checks: true    # janela de contexto (ver o mapa)
   routing_strategy: usage-based-routing-v2   # necessário para o rpm valer (ver o mapa)

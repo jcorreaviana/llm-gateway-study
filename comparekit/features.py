@@ -38,26 +38,28 @@ FEATURES: tuple[Feature, ...] = (
             "experimento", "cenas 3, 7 e 8"),
     Feature("Corpo do erro quando tudo falha",
             "503 estruturado, com `error.providers` (motivo por provedor) e `Retry-After`",
-            "o status do primeiro erro (429 na cena 7), uma mensagem única em texto livre que cita os grupos; "
-            "sem `Retry-After`", "experimento", "cena 7"),
+            "o status do erro do primeiro provedor da cadeia (429 com o mock em 429, 500 com o mock em 500, nos dois "
+            "casos com a última falha sendo o erro de conexão do Ollama), uma mensagem única em texto livre que "
+            "cita os grupos; sem `Retry-After`", "experimento", "cenas 7 e 7b, nesta versão e nesta configuração"),
     Feature("Limite local de requisições por minuto (rpm)",
             "balde de 10 que reabastece 1 a cada 6 s; 10 chamadas chegaram ao mock",
             "`rpm: 10` por minuto; 9 chamadas chegaram ao mock e as demais foram para o fallback, antes de "
             "chamar o mock", "experimento", "cena 2; o motivo de 9 e não 10 não foi investigado"),
     Feature("Respeito ao `Retry-After` de um 429",
             "sim: o cooldown dura o valor do header (2,0 a 2,2 s e 15,2 a 15,4 s)",
-            "com `allowed_fails: 3` (config do Marco 13) um 429, ou mesmo 9 seguidos, não abriu cooldown; com "
-            "`allowed_fails: 2` o cooldown durou o valor do header (2,2 s e 15,3 a 15,4 s), não o "
-            "`cooldown_time` de 10 s", "experimento", "cenas 3a a 3d"),
+            "com o contador ativo (`allowed_fails: 2`) o cooldown durou o valor do header (2,2 s e 15,3 a 15,4 s), "
+            "não o `cooldown_time` de 10 s; no config versionado (`allowed_fails: 3`, contador inativo) um 429, ou "
+            "mesmo 8 seguidos, não abriu cooldown", "experimento", "cenas 3a a 3d, nesta versão e nesta configuração"),
     Feature("Limite de falhas até parar de chamar o provedor",
             "3 falhas CONSECUTIVAS (um sucesso zera a contagem)",
-            "contagem por janela de tempo, sem zerar com sucesso; ver o achado sobre `allowed_fails` (o valor 3 é "
-            "o padrão e ficou inativo)", "experimento", "cenas 4, 5a e 5b; leitura de "
+            "nesta versão e nesta configuração, contagem por janela de tempo que o sucesso não zera (com "
+            "`allowed_fails: 2`, o cooldown abre quando as falhas passam desse valor); com o valor versionado (3, o "
+            "padrão da biblioteca) o contador fica inativo", "experimento", "cenas 4, 5a e 5b; leitura de "
             "`router_utils/cooldown_handlers.py` confirma a janela"),
     Feature("Recuperação do provedor",
             "meia-abertura com sonda controlada: uma chamada passa e as concorrentes vão ao fallback",
-            "volta direto depois do cooldown: todas as chamadas concorrentes foram ao mock", "experimento",
-            "cena 6, com o mock lento"),
+            "nesta versão e nesta configuração, volta direto depois do cooldown (com `allowed_fails: 2`): todas as "
+            "chamadas concorrentes foram ao mock", "experimento", "cena 6, com o mock lento"),
     Feature("Janela de contexto do provedor",
             "pula o provedor antes de chamar, com estimativa de caracteres/4",
             "pula antes de chamar (`enable_pre_call_checks`), contando tokens com o tokenizador da biblioteca "
@@ -75,11 +77,8 @@ FEATURES: tuple[Feature, ...] = (
     Feature("Métricas Prometheus",
             "`GET /metrics` com 9 famílias (`gateway_requests_total`, `gateway_fallback_total`, "
             "`gateway_breaker_state`, `gateway_latency_seconds`, `gateway_budget_remaining`, ...)",
-            "`/metrics` dá 404 no modo só-config; com o callback `prometheus` o proxy NÃO sobe no ambiente "
-            "travado por hash, porque `prometheus_client` não está no lock; quais métricas ele exporia "
-            "não foi verificado", "experimento",
-            "o código do logger cita usuários `premium` (nos filtros de rótulos); se há métricas só enterprise "
-            "não foi verificado"),
+            "não verificado com o callback `prometheus`: o pacote `prometheus_client` não está no lock; o endpoint "
+            "dá 404 no modo só-config", "experimento", "o 404 foi observado; com o callback, não verificado"),
     Feature("Gravação de requisições e respostas em arquivo",
             "recorder em JSONL (`record_content` liga ou desliga o conteúdo)",
             "não encontrei logger de arquivo embutido; as integrações embutidas enviam a serviços remotos ou "

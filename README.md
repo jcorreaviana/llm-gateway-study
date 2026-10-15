@@ -437,9 +437,11 @@ mesmo Ollama, e comparam **comportamento**, não desempenho. O LiteLLM roda isol
 sempre sob uma trava de saída de rede, e nenhuma chamada vai à Anthropic. Os resultados valem para essa versão, num Windows,
 com o mock; o gateway do projeto é de estudo e o LiteLLM é um produto muito mais completo.
 
-O que apareceu: o gateway do projeto conta falhas consecutivas e espera o valor do `Retry-After`; o LiteLLM conta falhas
-numa janela de tempo e, quando abre o cooldown, também respeita o valor do header; o `allowed_fails: 3` do config ficou
-inativo por ser o padrão da biblioteca. Tabelas, achados e limitações em [docs/LITELLM_COMPARISON.md](docs/LITELLM_COMPARISON.md);
+O que apareceu (nesta versão e nesta configuração): o gateway do projeto conta falhas consecutivas e espera o valor do
+`Retry-After`; o LiteLLM conta falhas numa janela de tempo e, quando abre o cooldown, também respeita o valor do header. O
+`failure_threshold: 3` do gateway corresponde a `allowed_fails: 2` no LiteLLM; o config versionado mantém `allowed_fails: 3`
+(o padrão da biblioteca, tratado como "não definido"), que não reproduz o comportamento do gateway próprio, e por isso a
+comparação nas cenas de falha usa a variante `allowed_fails: 2`. Tabelas, achados e limitações em [docs/LITELLM_COMPARISON.md](docs/LITELLM_COMPARISON.md);
 dados agregados em [reports/fase2-gateway-vs-litellm.csv](reports/fase2-gateway-vs-litellm.csv).
 
 ### Reproduzir
@@ -491,12 +493,23 @@ ruff check .                    # lint
 - Desenvolvido e testado no Windows. O ramo `fcntl` do budget e o workflow de CI no Linux ainda não foram
   exercitados.
 
-## Roadmap
+## Estado e trabalho futuro
 
-- **Fase 1 (este repositório):** gateway, mock, resiliência, observabilidade, custo e demo. Concluída.
-- **Fase 3 (concluída, local):** avaliação de Qwen contra Llama via gateway, sem Anthropic
-  ([relatório](reports/fase3-qwen-vs-llama.md)).
-- **Fase 3b (opcional):** baseline de um modelo de mercado (Claude) nos mesmos prompts, para medir a perda real.
-  Depende de autorização explícita.
-- **Fase 2 (concluída):** comparação de comportamento com o LiteLLM Proxy 1.103.1
-  ([documento](docs/LITELLM_COMPARISON.md)). Repetir com uma versão mais nova do LiteLLM é uma extensão possível.
+**Projeto concluído: Fases 1, 2 e 3.**
+
+- **Fase 1:** gateway, mock, resiliência, observabilidade, custo e demo.
+- **Fase 2:** comparação de comportamento com o LiteLLM Proxy 1.103.1 ([documento](docs/LITELLM_COMPARISON.md),
+  [CSV](reports/fase2-gateway-vs-litellm.csv)).
+- **Fase 3:** avaliação de Qwen contra Llama via gateway, sem Anthropic ([relatório](reports/fase3-qwen-vs-llama.md)).
+
+Documentos do projeto: [docs/STATUS.md](docs/STATUS.md) (histórico por marco e decisões),
+[docs/TEST_MATRIX.md](docs/TEST_MATRIX.md) (requisito para teste).
+
+### Trabalho futuro
+
+- **Fase 3b (opcional):** baseline de um modelo de mercado (Claude) nos mesmos prompts, para medir a perda real. Depende de
+  autorização explícita.
+- Repetir a comparação da Fase 2 com uma versão mais nova do LiteLLM; o resultado atual vale só para a 1.103.1.
+- Itens da Fase 2 marcados "não verificado": métricas do callback `prometheus` do LiteLLM (o pacote não está no lock), TPM,
+  `timeout` por tentativa e 429 sem `Retry-After`.
+- Variante de `reasoning` com explicação liberada e mais prompts por categoria na Fase 3, para resultados conclusivos.

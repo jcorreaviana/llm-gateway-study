@@ -1,5 +1,9 @@
 # STATUS
 
+**Projeto concluído: Fases 1, 2 e 3.** Documentos: [README](../README.md), [TEST_MATRIX](TEST_MATRIX.md),
+[comparação com o LiteLLM](LITELLM_COMPARISON.md), [relatório da Fase 3](../reports/fase3-qwen-vs-llama.md) e
+[da Fase 2 (CSV)](../reports/fase2-gateway-vs-litellm.csv). Trabalho futuro: seção no fim deste arquivo.
+
 ## Estado atual
 - **Marco 1 (setup e segurança): concluído e commitado** (sem push).
   `.gitignore`, `.env.example`, LICENSE MIT, `requirements.txt`, `pytest.ini`,
@@ -250,8 +254,8 @@
     (arquivos e `--history`). 4 quebras intencionais do config (ordem dos fallbacks, provedor Anthropic, host externo,
     `num_retries`) detectadas. CI sem `requirements-litellm*` (testado). **Nenhuma chamada à Anthropic.**
 
-- **Marco 14 (Fase 2: mesmo cenário nos dois gateways e comparação): concluído; commits locais, aguardando confirmação do push.**
-  Sem Anthropic; LiteLLM 1.103.1 sempre sob a trava de rede (62 subidas do proxy na comparação e 2 nas sondas, **0 eventos
+- **Marco 14 (Fase 2: mesmo cenário nos dois gateways e comparação): concluído; push pendente (ver o fim desta entrada).**
+  Sem Anthropic; LiteLLM 1.103.1 sempre sob a trava de rede (66 subidas do proxy, somando comparação, cena 7b, diagnóstico da 8b e sondas, **0 eventos
   bloqueados, 0 conexões fora do loopback, nenhum processo restante**). `comparekit/` (`metrics.py`, `report.py`, `features.py`),
   `scripts/compare_gateways.py` (runner: gateway e mock reiniciados a cada cena e repetição), documento `docs/LITELLM_COMPARISON.md`
   (seções 4 a 8, bloco gerado entre marcadores) e `reports/fase2-gateway-vs-litellm.csv` (102 linhas, determinístico, sem texto de
@@ -263,19 +267,35 @@
   - **Decisões de método:** `rpm` do mock só na cena 2 e removido nas demais nos DOIS gateways (numa tentativa exploratória, descartada,
     o `rpm: 10` do LiteLLM barrava a 10ª chamada ao mock e contaminava as cenas 4 a 6); cena 7 com os Ollama apontados para uma porta
     local sem serviço; cena 6 com o mock lento (2 s) e sondagem a cada 0,25 s para distinguir sonda controlada de volta direta.
-  - **Achado principal (corrige o Marco 13):** o `allowed_fails: 3` do `litellm/config.litellm.yaml` é IGUAL ao padrão da biblioteca e o
-    código instalado o trata como "não definido": com ele o LiteLLM não parou de chamar o mock nem em 10 falhas 500 seguidas nem em 8
-    respostas 429. O mapa do Marco 13 dizia que equivalia a `failure_threshold: 3`; não se confirmou. O config NÃO foi alterado (o teste
-    do Marco 13 compara os valores); a variante `allowed_fails: 2` mostra o comportamento com o contador ativo.
+  - **Achado principal (corrige o Marco 13):** no LiteLLM 1.103.1, `failure_threshold: 3` corresponde a `allowed_fails: 2` (o cooldown abre
+    quando as falhas PASSAM de `allowed_fails`). O `allowed_fails: 3` do `litellm/config.litellm.yaml` é o PADRÃO da biblioteca e o código
+    instalado o trata como "não definido" (contador inativo): com ele o LiteLLM não parou de chamar o mock nem em 10 falhas 500 seguidas nem
+    em 8 respostas 429, o que é efeito dessa configuração e não uma limitação do produto. O mapa do Marco 13 dizia que os dois 3 se
+    equivaliam. **Correção (pós-revisão):** os comentários do config e o documento agora registram a diferença; o teste do Marco 13 que
+    comparava os números passou a conferir que o mapa registra a diferença; os VALORES do config não foram alterados (as tabelas registram
+    esses valores). O config versionado NÃO reproduz o gateway próprio; a coluna comparável é a variante `allowed_fails: 2`.
   - **Demais achados** (detalhes e números no documento): falhas consecutivas (próprio) x janela sem zerar com sucesso (LiteLLM com
     `allowed_fails: 2`); o próprio espera o valor do `Retry-After` e o LiteLLM, com o contador ativo, também (2,2 s e 15,3 a 15,4 s, não o
     `cooldown_time` de 10 s), sem cooldown algum com um 429 só; sonda controlada (próprio) x volta direta (LiteLLM); rpm 10 x 9 chamadas ao
     mock; 503 estruturado x 429 em texto livre na cena 7; contexto pulado antes de chamar nos dois (400 no LiteLLM, 503 no próprio; tokens
     9822 x 11000 estimados); forçar por header x por nome do modelo e `disable_fallbacks`; `/metrics` 404 no só-config e o callback
     `prometheus` não sobe porque `prometheus_client` não está no lock (nada foi instalado).
-  - **Testes:** 764 passando + 12 de integração (1 novo, `test_compare_integration.py`, passou em 47 s); cobertura 96,02% (`comparekit`
+  - **Testes:** 764 passando + 12 de integração (1 novo, `test_compare_integration.py`, passou em 47 s); cobertura 95,98% (`comparekit`
     entrou na fonte); ruff limpo; `check_secrets.py` limpo (arquivos e `--history`). 5 quebras intencionais, todas detectadas (aviso de
     escopo: 2 testes; aviso de comportamento: 2; `find_leaks`: 2; `sanitize_run` aberto: 1, só o teste unitário; filtro do provedor: 1).
+  - **Ajustes pós-revisão do usuário:** (1) a tabela de comportamento tem como comparação principal o gateway próprio x LiteLLM com
+    `allowed_fails: 2`, e o config versionado vira coluna secundária rotulada "contador de falhas inativo"; (2) cena 7b (mock em 500, Ollama
+    sem serviço): o status do erro do LiteLLM seguiu o do primeiro provedor da cadeia (429 com o mock em 429, 500 com o mock em 500), não a
+    última falha (erro de conexão do Ollama); só estes dois casos foram testados; (3) cena 8b explicada: o mock cabe na janela e foi chamado
+    (429), os Ollama foram pulados pelo pré-filtro de contexto, e o erro final foi o do primeiro provedor; sobre o `ollama_qwen` a mensagem do
+    LiteLLM não diz nada; (4) "volta direto, sem sonda" e "janela que o sucesso não zera" ganharam "nesta versão e nesta configuração";
+    (5) linha de Prometheus: "não verificado com o callback `prometheus`: o pacote `prometheus_client` não está no lock; o endpoint dá 404
+    no modo só-config" (nada foi instalado nem investigado). Execuções extras: `m14-adj` (cena 7b) e `m14-diag8b` (diagnóstico, não entra nas
+    tabelas); 66 subidas do proxy no total, 0 bloqueios.
+  - **Intermitência observada, não explicada:** `tests/test_eval_stats.py::test_embedding_unavailable_when_dependency_or_model_is_missing`
+    (não alterado) falhou 3 vezes seguidas no teardown com `getaddrinfo -> 'huggingface.co'` registrado pela trava de rede dos testes
+    (a tentativa foi bloqueada antes de sair), e depois passou 5 vezes seguidas, inclusive duas suítes completas. Fora do pytest, nenhuma
+    resolução de nome foi vista. Causa não identificada.
   - **Busca por dados pessoais** (nome de usuário da máquina, pastas de perfil do Windows, e-mail pessoal, nome completo, fora do `LICENSE`):
     nenhuma ocorrência nos arquivos novos. Ocorrências antigas: o regex e o teste do scanner de e-mail, um teste do lock e a linha do
     Marco 8 acima, que traz o nome do titular da licença no próprio `STATUS.md` (já publicada; pendência para decisão do usuário).
@@ -516,10 +536,11 @@
 - Runner de avaliação sobe também o mock (inútil na Fase 3); inofensivo, mas é um processo a mais.
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
-## Próximos passos
-1. **Fase 2 concluída (Marco 14); falta o push** após a confirmação. Extensão futura: repetir a comparação com uma versão mais nova
-   do LiteLLM (e, se fizer sentido, investigar o 9 do rpm e o `prometheus_client`, que exige decisão sobre dependência nova).
-2. **Fase 3b (opcional, depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts, para medir a perda
+## Trabalho futuro
+1. **Fase 3b (opcional, depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts, para medir a perda
    real. Também: variante de `reasoning` com explicação liberada e mais prompts por categoria para resultados conclusivos.
+2. **Repetir a comparação da Fase 2** com uma versão mais nova do LiteLLM (o resultado vale só para a 1.103.1). Itens "não verificado":
+   métricas do callback `prometheus` (o pacote `prometheus_client` não está no lock; instalá-lo exige decisão sobre dependência nova),
+   TPM, `timeout` por tentativa, 429 sem `Retry-After`, e o 9 (e não 10) chamadas do `rpm` do LiteLLM.
 3. Para repetir a avaliação e regerar o relatório, veja a seção "Fase 3: avaliação" do README (os dados do run `m10-full` são
-   locais e não versionados).
+   locais e não versionados). Para a Fase 2, a seção "Fase 2: comparação com o LiteLLM Proxy".

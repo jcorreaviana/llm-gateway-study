@@ -173,7 +173,7 @@ class Scene:
             content = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
             rec["reply_chars"] = len(content)
         else:
-            rec["error_body"] = resp.text[:600]  # texto de ERRO do gateway/mock (nunca resposta de modelo)
+            rec["error_body"] = resp.text[:4000]  # texto de ERRO do gateway/mock (nunca resposta de modelo)
             rec["error_keys"] = sorted(data.keys()) if isinstance(data, dict) else None
         if track:
             stats = await self.mock_stats()
@@ -306,6 +306,16 @@ async def scene_all_unavailable(s: Scene) -> None:
     s.extra["ollama"] = "porta local sem servico (variante dead_ollama)"
 
 
+async def scene_all_unavailable_500(s: Scene) -> None:
+    """Igual à cena 7, mas o mock responde 500 (e não 429): o status do erro final depende de qual falha foi a primeira
+    ou a última? Os Ollama seguem apontados para uma porta sem serviço (erro de conexão)."""
+    await s.reset_mock()
+    await s.chaos(mode="server_error", error_status=500)
+    await s.ask(label="tudo fora, mock em 500 (1a)")
+    await s.ask(label="tudo fora, mock em 500 (2a, logo depois)")
+    s.extra["ollama"] = "porta local sem servico (variante dead_ollama)"
+
+
 async def scene_context_large(s: Scene) -> None:
     await s.reset_mock()
     await s.ask(label="prompt acima de todas as janelas", prompt=synthetic_prompt(LARGE_PROMPT_CHARS))
@@ -350,6 +360,7 @@ SCENES: list[tuple[str, str, Callable[[Scene], Awaitable[None]], frozenset[str]]
     ("5b", "Falhas intercaladas (alternando falha e sucesso)", interleaved_scene("FS" * 5), frozenset()),
     ("6", "Recuperacao (mock volta lento)", scene_recovery, frozenset()),
     ("7", "Tudo indisponivel", scene_all_unavailable, frozenset({DEAD_VARIANT})),
+    ("7b", "Tudo indisponivel, mock em 500", scene_all_unavailable_500, frozenset({DEAD_VARIANT})),
     ("8a", "Prompt maior que todas as janelas", scene_context_large, frozenset()),
     ("8b", "Prompt maior que a janela do Ollama", scene_context_medium, frozenset()),
     ("9", "Forcar provedor", scene_force, frozenset()),
