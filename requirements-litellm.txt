@@ -1,0 +1,3 @@
+# Entrada do lock (veja requirements-litellm.lock.txt). NAO e instalado pelo CI nem pelo requirements.txt.
+# Versao exata, so no .venv-litellm/. LiteLLM 1.103.1, lancado em 2026-09-29.
+litellm[proxy]==1.103.1

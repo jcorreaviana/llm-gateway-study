@@ -47,3 +47,6 @@ desktop.ini
 *.log
 *.tmp
 .cache/
+
+# Venv isolado do LiteLLM (nunca instalar no .venv do projeto)
+.venv-litellm/
