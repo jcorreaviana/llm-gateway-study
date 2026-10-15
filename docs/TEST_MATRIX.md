@@ -259,8 +259,29 @@ Quebras intencionais (uma de cada vez, restaurada): ordem dos fallbacks trocada 
 Llama (3), host `192.0.2.1` no `api_base` (1), `num_retries: 2` em `router_settings` (1); remover o patch do asyncio da trava
 (1: `test_asyncio_connect_to_external_ip_is_blocked`, o que confirma que no Windows o IP literal não gera evento de auditoria).
 
+## Marco 14: comparação de gateways (Fase 2)
+
+`tests/test_compare_metrics.py` (11), `tests/test_compare_report.py` (24) e `tests/test_compare_integration.py` (1, marker
+`integration`). Os dois primeiros rodam sem o litellm, sem o Ollama e sem rede, com resultados fictícios.
+
+| Requisito | Teste | Situação |
+|---|---|---|
+| Métricas com valores conhecidos: chamadas ao mock até parar, 1ª requisição que não chegou, tempo até voltar, janela da sonda, tentativas, divergência | `test_calls_until_stop`, `test_first_skipped_index_needs_a_call_first`, `test_time_to_return_*`, `test_window_counts_*`, `test_attempts_total_*`, `test_divergence_between_repetitions`, `test_time_summary_and_stability` | novo |
+| Tabelas e CSV determinísticos (mesma saída em duas execuções, com a entrada embaralhada) | `test_csv_is_deterministic_*`, `test_blocks_are_deterministic_*`, `test_csv_columns_and_row_order` | novo |
+| Divergência entre as repetições é reportada, não escolhida | `test_behavior_table_marks_divergence_between_repetitions`, `test_time_cell_reports_range_and_missing_measurements` | novo |
+| Nenhum texto de resposta de modelo no CSV nem no documento (canários) | `test_no_model_text_reaches_csv_or_document`, `test_sanitize_drops_everything_outside_the_whitelist`, `test_provider_field_cannot_smuggle_text`, `test_find_leaks_blocks_output_*`, `test_generated_block_refuses_to_write_*` | novo |
+| Avisos obrigatórios sempre no bloco gerado | `test_every_mandatory_warning_is_in_the_generated_block`, `test_warnings_state_the_required_scope`, `test_block_explains_how_to_read_attempts_and_stability` | novo |
+| Tabela de recursos: só as quatro formas de verificação; streaming e chaves virtuais como "fora do escopo" | `test_features_only_accept_known_verification_methods`, `test_features_cover_the_required_topics` | novo |
+| Junção de execuções, soma da trava de rede e recusa de repetição | `test_merge_runs_*`, `test_dynamic_loopback_ports_collapse_into_one_line` | novo |
+| Cenas mínimas nos dois gateways com processos reais, trava sem bloqueios (`skip` sem litellm ou Ollama) | `test_minimal_scenes_in_both_gateways` (`-m integration`) | novo |
+
+Quebras intencionais (uma de cada vez, restaurada): aviso de escopo (`W_VERSION`) removido (2 testes falham), aviso de comportamento
+(`W_SCOPE`) removido (2), `find_leaks` desligada (2), `sanitize_run` deixando passar `reply` e `error_body` (1; o teste ponta a ponta de
+canário não detecta, porque o relatório não renderiza esses campos: quem protege é o teste unitário do filtro), `_ident` devolvendo o
+texto (1).
+
 ## Cobertura
 
-`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,56% medido no Marco 13, 729 testes + 11 de integração) em `gateway/`,
-`mock_upstream/` e `evalkit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
+`pytest --cov` (config em `pyproject.toml`, `fail_under = 85`, com ramos): **96%** (96,02% medido no Marco 14, 764 testes + 12 de integração) em `gateway/`,
+`mock_upstream/`, `evalkit/` e `comparekit/`. O que sobra sem cobertura é irrelevante para decisões: o ramo `fcntl` (só Linux/macOS),
 o bloco `if __name__ == "__main__"` dos servidores e a limpeza no `finally` de erros de E/S raros.

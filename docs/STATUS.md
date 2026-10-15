@@ -250,6 +250,36 @@
     (arquivos e `--history`). 4 quebras intencionais do config (ordem dos fallbacks, provedor Anthropic, host externo,
     `num_retries`) detectadas. CI sem `requirements-litellm*` (testado). **Nenhuma chamada à Anthropic.**
 
+- **Marco 14 (Fase 2: mesmo cenário nos dois gateways e comparação): concluído; commits locais, aguardando confirmação do push.**
+  Sem Anthropic; LiteLLM 1.103.1 sempre sob a trava de rede (62 subidas do proxy na comparação e 2 nas sondas, **0 eventos
+  bloqueados, 0 conexões fora do loopback, nenhum processo restante**). `comparekit/` (`metrics.py`, `report.py`, `features.py`),
+  `scripts/compare_gateways.py` (runner: gateway e mock reiniciados a cada cena e repetição), documento `docs/LITELLM_COMPARISON.md`
+  (seções 4 a 8, bloco gerado entre marcadores) e `reports/fase2-gateway-vs-litellm.csv` (102 linhas, determinístico, sem texto de
+  resposta). Resultados brutos em `compare_results/` (ignorado; `reports/` não é ignorado).
+  - **Execução:** 12 cenas (1, 2, 3a a 3d, 4, 5a, 5b, 6, 7, 8a, 8b, 9) x 3 repetições x gateway próprio e LiteLLM, mais a variante
+    `allowed_fails: 2` do LiteLLM (cenas 3c, 3d, 4, 5a, 5b e 6). Duas execuções do runner (`m14-full`; `m14-3cd` com as cenas 3c e 3d,
+    acrescentadas depois que a 3a/3b mostrou que um 429 só não ativa o contador do LiteLLM) e as sondas de recursos. **Todas as
+    repetições concordaram (3/3) em todas as linhas.**
+  - **Decisões de método:** `rpm` do mock só na cena 2 e removido nas demais nos DOIS gateways (numa tentativa exploratória, descartada,
+    o `rpm: 10` do LiteLLM barrava a 10ª chamada ao mock e contaminava as cenas 4 a 6); cena 7 com os Ollama apontados para uma porta
+    local sem serviço; cena 6 com o mock lento (2 s) e sondagem a cada 0,25 s para distinguir sonda controlada de volta direta.
+  - **Achado principal (corrige o Marco 13):** o `allowed_fails: 3` do `litellm/config.litellm.yaml` é IGUAL ao padrão da biblioteca e o
+    código instalado o trata como "não definido": com ele o LiteLLM não parou de chamar o mock nem em 10 falhas 500 seguidas nem em 8
+    respostas 429. O mapa do Marco 13 dizia que equivalia a `failure_threshold: 3`; não se confirmou. O config NÃO foi alterado (o teste
+    do Marco 13 compara os valores); a variante `allowed_fails: 2` mostra o comportamento com o contador ativo.
+  - **Demais achados** (detalhes e números no documento): falhas consecutivas (próprio) x janela sem zerar com sucesso (LiteLLM com
+    `allowed_fails: 2`); o próprio espera o valor do `Retry-After` e o LiteLLM, com o contador ativo, também (2,2 s e 15,3 a 15,4 s, não o
+    `cooldown_time` de 10 s), sem cooldown algum com um 429 só; sonda controlada (próprio) x volta direta (LiteLLM); rpm 10 x 9 chamadas ao
+    mock; 503 estruturado x 429 em texto livre na cena 7; contexto pulado antes de chamar nos dois (400 no LiteLLM, 503 no próprio; tokens
+    9822 x 11000 estimados); forçar por header x por nome do modelo e `disable_fallbacks`; `/metrics` 404 no só-config e o callback
+    `prometheus` não sobe porque `prometheus_client` não está no lock (nada foi instalado).
+  - **Testes:** 764 passando + 12 de integração (1 novo, `test_compare_integration.py`, passou em 47 s); cobertura 96,02% (`comparekit`
+    entrou na fonte); ruff limpo; `check_secrets.py` limpo (arquivos e `--history`). 5 quebras intencionais, todas detectadas (aviso de
+    escopo: 2 testes; aviso de comportamento: 2; `find_leaks`: 2; `sanitize_run` aberto: 1, só o teste unitário; filtro do provedor: 1).
+  - **Busca por dados pessoais** (nome de usuário da máquina, pastas de perfil do Windows, e-mail pessoal, nome completo, fora do `LICENSE`):
+    nenhuma ocorrência nos arquivos novos. Ocorrências antigas: o regex e o teste do scanner de e-mail, um teste do lock e a linha do
+    Marco 8 acima, que traz o nome do titular da licença no próprio `STATUS.md` (já publicada; pendência para decisão do usuário).
+
 ## Decisões
 - **Sem coautoria, daqui em diante:** nenhum commit leva trailer `Co-Authored-By` nem menção a coautoria.
   `--force` volta a ser proibido (a autorização de 14/10/2026 foi de uso único e já foi consumida).
@@ -487,9 +517,8 @@
 - Validação real única da Anthropic (1 chamada, `max_tokens` 20) nunca feita: só com autorização explícita.
 
 ## Próximos passos
-1. **Fase 2, Marco 14 (próximo):** comparação nos dois gateways. Rodar os mesmos cenários no gateway do projeto e no LiteLLM 1.103.1 e
-   verificar por experimento os itens `[VERIFICAR]` do `litellm/config.litellm.yaml` (Retry-After, breaker consecutivo ou em janela,
-   janela de contexto, TPM, forçar provedor). Ver `docs/LITELLM_COMPARISON.md`.
+1. **Fase 2 concluída (Marco 14); falta o push** após a confirmação. Extensão futura: repetir a comparação com uma versão mais nova
+   do LiteLLM (e, se fizer sentido, investigar o 9 do rpm e o `prometheus_client`, que exige decisão sobre dependência nova).
 2. **Fase 3b (opcional, depende de autorização explícita):** baseline de um modelo de mercado nos mesmos prompts, para medir a perda
    real. Também: variante de `reasoning` com explicação liberada e mais prompts por categoria para resultados conclusivos.
 3. Para repetir a avaliação e regerar o relatório, veja a seção "Fase 3: avaliação" do README (os dados do run `m10-full` são
